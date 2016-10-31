@@ -6,7 +6,7 @@ CC = gcc
 CFLAGS = -I.
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env lcd_env_show_fs \
 	bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 gpiosniffer3 \
-	gpiosniffint gpiosniffint3
+	gpiosniffint gpiosniffint3 rfkemotsniffer
 
 #################
 # General rules #
@@ -94,6 +94,9 @@ gpiosniffint:		gpiosniffint.c
 	$(CC) -o $@ $< $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS)
 
 gpiosniffint3:		gpiosniffint3.c
+	$(CC) -o $@ $< $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS)
+
+rfkemotsniffer:		rfkemotsniffer.c
 	$(CC) -o $@ $< $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS)
 
 ##################
