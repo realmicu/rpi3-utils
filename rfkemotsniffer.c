@@ -21,7 +21,7 @@
 #define KEMOT_MIN_SHORT_TIME	250		/*  short time in us */
 #define KEMOT_MAX_SHORT_TIME	400	
 #define KEMOT_MIN_LONG_TIME	850		/*  long time in us */
-#define KEMOT_MAX_LONG_TIME	1000
+#define KEMOT_MAX_LONG_TIME	1100
 
 #define KEMOT_SYSID_MASK	0x00554000	/* DIP switch address mask */
 #define KEMOT_A_MASK		0x00001000	/* Remote A-D mask */
@@ -236,6 +236,9 @@ int main(int argc, char *argv[])
 	tsync_max = 0;
 	tlong_max = 0;
 	tshort_max = 0;
+	tsync_sum =0;
+	tlong_sum =0;
+	tshort_sum =0;
 #endif
 
 	/* main loop - never ends, send signal to exit */
