@@ -30,10 +30,11 @@
 /* code data */
 #define POWER433_BADCODE_MASK	0xaaaaaaaa	/* eliminate artifact codes */
 #define POWER433_SYSID_MASK	0x00554000	/* DIP switch address mask */
-#define POWER433_A_MASK		0x00001000	/* Remote A-D mask */
+#define POWER433_A_MASK		0x00001000	/* Remote A-E mask */
 #define POWER433_B_MASK		0x00000400
 #define POWER433_C_MASK		0x00000100
 #define POWER433_D_MASK		0x00000040
+#define POWER433_E_MASK		0x00000010	/* (reserved - not on remote) */
 #define POWER433_ON_MASK	0x00000004	/* Buttons mask */
 #define POWER433_OFF_MASK	0x00000001
 
@@ -210,25 +211,27 @@ int Power433_sendCommand(int systemid, int deviceid, int button)
 		  ((systemid & 0x4) << 2) + ((systemid & 0x2) << 1) + \
 		  (systemid & 0x1)) << 14;
 
-	/* device (0-A, 1-B, 2-C, 3-D, zero means active) */
+	/* device (0-A, 1-B, 2-C, 3-D, 4-E, zero means active) */
 	mask = (POWER433_A_MASK | POWER433_B_MASK | POWER433_C_MASK | \
-	       POWER433_D_MASK | 0x10);
-	if (!deviceid)
+	       POWER433_D_MASK | POWER433_E_MASK);
+	if (deviceid == POWER433_DEVICE_A)
 		tmpcode |= (mask & ~POWER433_A_MASK);
-	else if (deviceid == 1)
+	else if (deviceid == POWER433_DEVICE_B)
 		tmpcode |= (mask & ~POWER433_B_MASK);
-	else if (deviceid == 2)
+	else if (deviceid == POWER433_DEVICE_C)
 		tmpcode |= (mask & ~POWER433_C_MASK);
-	else if (deviceid == 3)
+	else if (deviceid == POWER433_DEVICE_D)
 		tmpcode |= (mask & ~POWER433_D_MASK);
+	else if (deviceid == POWER433_DEVICE_E)
+		tmpcode |= (mask & ~POWER433_E_MASK);
 	else
 		return -1;
 
 	/* on/off button (0-OFF, 1-ON, zero is active */
 	mask = (POWER433_ON_MASK | POWER433_OFF_MASK);
-	if (!button)
+	if (button == POWER433_BUTTON_OFF)
 		tmpcode |= (mask & ~POWER433_OFF_MASK);
-	else if (button == 1)
+	else if (button == POWER433_BUTTON_ON)
 		tmpcode |= (mask & ~POWER433_ON_MASK);
 	else
 		return -1;
@@ -248,13 +251,15 @@ int Power433_decodeCommand(unsigned int code, int *systemid,
 		    ((s & 0x40) >> 3) + ((s & 0x100) >> 4);
 
 	if (!(code & POWER433_A_MASK))
-		*deviceid = 0;
+		*deviceid = POWER433_DEVICE_A;
 	else if (!(code & POWER433_B_MASK))
-		*deviceid = 1;
+		*deviceid = POWER433_DEVICE_B;
 	else if (!(code & POWER433_C_MASK))
-		*deviceid = 2;
+		*deviceid = POWER433_DEVICE_C;
 	else if (!(code & POWER433_D_MASK))
-		*deviceid = 3;
+		*deviceid = POWER433_DEVICE_D;
+	else if (!(code & POWER433_E_MASK))
+		*deviceid = POWER433_DEVICE_E;
 	else {
 		*deviceid = -1;
 		*button = -1;
@@ -262,9 +267,9 @@ int Power433_decodeCommand(unsigned int code, int *systemid,
 	}
 
 	if (!(code & POWER433_OFF_MASK))
-		*button = 0;
+		*button = POWER433_BUTTON_OFF;
 	else if (!(code & POWER433_ON_MASK))
-		*button = 1;
+		*button = POWER433_BUTTON_ON;
 	else {
 		*button = -1;
 		return -1;
