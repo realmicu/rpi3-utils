@@ -6,7 +6,7 @@ CC = gcc
 CFLAGS = -I.
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env lcd_env_show_fs \
 	bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 gpiosniffer3 \
-	gpiosniffint gpiosniffint3 rfkemotsniffer
+	gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer
 
 #################
 # General rules #
@@ -72,6 +72,7 @@ lcd_env_show_fs:	lcd_env_show_fs.c
 #######################
 
 GPOLL_EXTRA_LIBS = -lwiringPi
+
 pigpiobtnpoll:		pigpiobtnpoll.c
 	$(CC) -o $@ $< $(CFLAGS) $(GPOLL_EXTRA_LIBS)
 
@@ -80,6 +81,9 @@ pigpiobtnpoll:		pigpiobtnpoll.c
 ##################################
 
 GPIOSNIFFER_EXTRA_LIBS = -lwiringPi
+
+power433_lib.o:		power433_lib.c
+	$(CC) -c -o $@ $< $(CFLAGS) -pthread
 
 gpiosniffer:		gpiosniffer.c
 	$(CC) -o $@ $< $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS)
@@ -98,6 +102,9 @@ gpiosniffint3:		gpiosniffint3.c
 
 rfkemotsniffer:		rfkemotsniffer.c
 	$(CC) -o $@ $< $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS)
+
+power433sniffer:	power433sniffer.c power433_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS) -pthread
 
 ##################
 # Other programs #
