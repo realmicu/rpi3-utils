@@ -2,7 +2,7 @@
 #define _POWER433_LIB_H_
 
 /* uncomment/define if timing statistic is required */
-#define POWER433_INCLUDE_TIMING_STATS
+//#define POWER433_INCLUDE_TIMING_STATS
 
 /* Protocol constants */
 #define POWER433_BITS		24              /* bits per transmission */

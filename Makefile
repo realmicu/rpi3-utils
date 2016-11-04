@@ -4,9 +4,10 @@
 
 CC = gcc
 CFLAGS = -I.
-PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env lcd_env_show_fs \
-	bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 gpiosniffer3 \
-	gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer
+PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
+	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
+	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
+	power433send
 
 #################
 # General rules #
@@ -82,9 +83,6 @@ pigpiobtnpoll:		pigpiobtnpoll.c
 
 GPIOSNIFFER_EXTRA_LIBS = -lwiringPi
 
-power433_lib.o:		power433_lib.c
-	$(CC) -c -o $@ $< $(CFLAGS) -pthread
-
 gpiosniffer:		gpiosniffer.c
 	$(CC) -o $@ $< $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS)
 
@@ -103,8 +101,23 @@ gpiosniffint3:		gpiosniffint3.c
 rfkemotsniffer:		rfkemotsniffer.c
 	$(CC) -o $@ $< $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS)
 
+##########################################
+# RF control of power sockets using GPIO #
+##########################################
+
+POWER433_EXTRA_LIBS = -lwiringPi -pthread
+
+power433_lib.o:		power433_lib.c
+	$(CC) -c -o $@ $< $(CFLAGS) -pthread
+
 power433sniffer:	power433sniffer.c power433_lib.o
-	$(CC) -o $@ $^ $(CFLAGS) $(GPIOSNIFFER_EXTRA_LIBS) -pthread
+	$(CC) -o $@ $^ $(CFLAGS) $(POWER433_EXTRA_LIBS)
+
+power433send:		power433send.c power433_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(POWER433_EXTRA_LIBS)
+
+#power433control:	power433control.c power433_lib.o
+#	$(CC) -o $@ $^ $(CFLAGS) $(POWER433_EXTRA_LIBS)
 
 ##################
 # Other programs #

@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/time.h>
+#include <sched.h>
 
 #include <wiringPi.h>
 
@@ -83,6 +84,17 @@ int dropRootPriv(int newuid, int newgid)
 	return 0;
 }
 
+/* change sheduling priority */
+int changeSched(void)
+{
+	struct sched_param s;
+
+	s.sched_priority = 0;
+	if(sched_setscheduler(0, SCHED_BATCH, &s))
+		return -1;
+	return 0;
+}
+
 #ifdef POWER433_INCLUDE_TIMING_STATS
 /* Intercept TERM and INT signals */
 void signalQuit(int sig)
@@ -128,6 +140,13 @@ int main(int argc, char *argv[])
 
 	/* no transmission, only read */
 	Power433_init(-1, gpio);
+
+	/* change scheduling priority */
+	if (changeSched()) {
+		fprintf(stderr, "Unable to change process scheduling priority: %s\n",
+			strerror (errno));
+		exit(-1);
+	}
 
 	/* drop privileges */
 	if (dropRootPriv(OWNER_UID, OWNER_GID)) {

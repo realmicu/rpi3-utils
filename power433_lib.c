@@ -18,13 +18,12 @@
 #define POWER433_TX_SHORT_TIME	(POWER433_TX_BIT_TIME >> 2)
 #define POWER433_TX_LONG_TIME	(POWER433_TX_BIT_TIME - POWER433_TX_SHORT_TIME)
 #define POWER433_TX_SYNC_TIME	(POWER433_TX_SHORT_TIME * 31)
-#define POWER433_TX_REPEAT_DELAY	POWER433_TX_SYNC_TIME
 /* timing data - receiving */
 #define POWER433_MIN_SYNC_TIME	9500		/*  sync time in us */
 #define POWER433_MAX_SYNC_TIME	9800
 #define POWER433_MIN_SHORT_TIME	250		/*  short time in us */
-#define POWER433_MAX_SHORT_TIME	400	
-#define POWER433_MIN_LONG_TIME	850		/*  long time in us */
+#define POWER433_MAX_SHORT_TIME	450
+#define POWER433_MIN_LONG_TIME	800		/*  long time in us */
 #define POWER433_MAX_LONG_TIME	1100
 
 /* code data */
@@ -168,18 +167,18 @@ void Power433_sendCode(unsigned int txcode)
 		}
 		codemask >>= 1;
 	}
-			
+
 	/* send sync signal - high pulse + 31 low pulses */
-	digitalWrite(txgpio, 1);
+	digitalWrite(txgpio, HIGH);
 	delayMicroseconds(POWER433_TX_SHORT_TIME);
-	digitalWrite(txgpio, 0);
+	digitalWrite(txgpio, LOW);
 	delayMicroseconds(POWER433_TX_SYNC_TIME);
 
 	/* code transmission */
 	for(i = 0; i < POWER433_PULSES; i += 2) {
-		digitalWrite(txgpio, 1);
+		digitalWrite(txgpio, HIGH);
 		delayMicroseconds(txbuf[i]);
-		digitalWrite(txgpio, 0);
+		digitalWrite(txgpio, LOW);
 		delayMicroseconds(txbuf[i + 1]);
 	}
 }
@@ -192,10 +191,16 @@ void Power433_repeatCode(unsigned int txcode, int n)
 	if (txgpio < 0)
 		return;
 
-	for(i = 0; i < n; i++) {
+	for(i = 0; i < n; i++)
 		Power433_sendCode(txcode);
-		delayMicroseconds(POWER433_TX_REPEAT_DELAY);
-	}
+
+	/* code sequence always ends with low signal which may last
+	   for unknown length - till nearest noise peak, so pulse it
+	   to end within predefined timing */
+	digitalWrite(txgpio, HIGH);
+	delayMicroseconds(POWER433_TX_SHORT_TIME);
+	digitalWrite(txgpio, LOW);
+	delayMicroseconds(POWER433_TX_SHORT_TIME);
 }
 
 /* Send command */
@@ -336,7 +341,7 @@ void handleGpioInt(void)
 			if ((tsdiff > POWER433_MIN_SHORT_TIME && tsdiff < POWER433_MAX_SHORT_TIME) || \
 			    (tsdiff > POWER433_MIN_LONG_TIME && tsdiff < POWER433_MAX_LONG_TIME))
 				tsbuf[pulscount++] = tsdiff; /* valid 0 or 1 */
-			else 
+			else
 				incode = 0;	/* noise, discard code */
 		} else {
 		/* code completed, decode */
