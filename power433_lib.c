@@ -19,12 +19,14 @@
 #define POWER433_TX_LONG_TIME	(POWER433_TX_BIT_TIME - POWER433_TX_SHORT_TIME)
 #define POWER433_TX_SYNC_TIME	(POWER433_TX_SHORT_TIME * 31)
 /* timing data - receiving */
-#define POWER433_MIN_SYNC_TIME	9500		/*  sync time in us */
+#define POWER433_MIN_SYNC_TIME	9500		/* sync time in us */
 #define POWER433_MAX_SYNC_TIME	9800
-#define POWER433_MIN_SHORT_TIME	250		/*  short time in us */
+#define POWER433_MIN_SHORT_TIME	170		/* short time in us */
 #define POWER433_MAX_SHORT_TIME	450
-#define POWER433_MIN_LONG_TIME	800		/*  long time in us */
+#define POWER433_MIN_LONG_TIME	800		/* long time in us */
 #define POWER433_MAX_LONG_TIME	1100
+#define POWER433_MAX_NOISE_TIME	100		/* noise time in us */
+#define POWER433_MAX_CODE_TIME	(POWER433_BITS * POWER433_TX_BIT_TIME * 6 / 5)
 
 /* code data */
 #define POWER433_BADCODE_MASK	0xaaaaaaaa	/* eliminate artifact codes */
@@ -41,7 +43,7 @@
 /* (volatile keeps variables in memory for interrupts) */
 static int txgpio, rxgpio;
 static struct timeval tstart;
-static volatile unsigned long tsprev, code;
+static volatile unsigned long tsprev, tclen, code;
 static unsigned long tsbuf[POWER433_PULSES];	/* 2 * bit timing (high, low)*/
 static volatile int incode, pulscount;
 static sem_t codeready;
@@ -332,6 +334,7 @@ void handleGpioInt(void)
 		/* next call may be start of high+low encoded bits */
 		incode = 1;
 		pulscount = 0;
+		tclen = 0;
 #ifdef POWER433_INCLUDE_TIMING_STATS
 		stat_sync = tsdiff;	/* for statistic */
 #endif
@@ -341,9 +344,10 @@ void handleGpioInt(void)
 			if ((tsdiff > POWER433_MIN_SHORT_TIME && tsdiff < POWER433_MAX_SHORT_TIME) || \
 			    (tsdiff > POWER433_MIN_LONG_TIME && tsdiff < POWER433_MAX_LONG_TIME))
 				tsbuf[pulscount++] = tsdiff; /* valid 0 or 1 */
-			else
+			else if (tsdiff > POWER433_MAX_NOISE_TIME)
 				incode = 0;	/* noise, discard code */
-		} else {
+			tclen += tsdiff;
+		} else if (tclen < POWER433_MAX_CODE_TIME) {
 		/* code completed, decode */
 			tmpcode = 0;
 			for(i = 0; i < pulscount; i += 2) {
@@ -377,7 +381,9 @@ void handleGpioInt(void)
 				if (sval < 1)
 					sem_post(&codeready);
 			}
-		}
+		} else
+		/* code too long (may be too much noise), discard */
+			incode = 0;
 	}
 	tsprev = tscur;
 }

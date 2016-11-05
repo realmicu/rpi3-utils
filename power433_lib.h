@@ -7,7 +7,7 @@
 /* Protocol constants */
 #define POWER433_BITS		24              /* bits per transmission */
 #define POWER433_PULSES		(POWER433_BITS << 1)
-#define POWER433_RETRANS	3               /* code retransmissions */
+#define POWER433_RETRANS	8               /* code retransmissions (>=3) */
 
 /* Pulse types from classifyPulse() function*/
 #define POWER433_PULSE_TYPE_SYNC	0
