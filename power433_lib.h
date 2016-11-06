@@ -16,11 +16,11 @@
 #define POWER433_PULSE_TYPE_UNKNOWN	-1
 
 /* Device and button constants */
-#define POWER433_DEVICE_A	0
-#define POWER433_DEVICE_B	1
-#define POWER433_DEVICE_C	2
-#define POWER433_DEVICE_D	3
-#define POWER433_DEVICE_E	4
+#define POWER433_DEVICE_A	0x10
+#define POWER433_DEVICE_B	0x08
+#define POWER433_DEVICE_C	0x04
+#define POWER433_DEVICE_D	0x02
+#define POWER433_DEVICE_E	0x01
 #define POWER433_BUTTON_OFF	0
 #define POWER433_BUTTON_ON	1
 
@@ -47,13 +47,14 @@ void Power433_repeatCode(unsigned int code, int repeats);
 
 /* Send command: */
 /*   systemid - 5-bit System Code (0-31) */
-/*   deviceid - button letter (0-A, 1-B, 2-C, 3-D, 4-E(unused)) */
+/*   deviceid - button letter (channel) mask (5 bits) */
 /*   button   - power button (0-OFF, 1-ON) */
-int Power433_sendCommand(int systemid, int deviceid, int button);
+int Power433_sendCommand(unsigned int systemid, unsigned int deviceid,
+                         unsigned int button);
 
 /* Decode raw code data for power switches, ie: Kemot: */
 /*   systemid - 5-bit System Code (0-31) */
-/*   deviceid - button letter (0-A, 1-B, 2-C, 3-D, 4-E(unused)) */
+/*   deviceid - button letter (channel) mask (5 bits) */
 /*   button   - power button (0-OFF, 1-ON) */
 int Power433_decodeCommand(unsigned int code, int *systemid,
 			   int *deviceid, int *button);

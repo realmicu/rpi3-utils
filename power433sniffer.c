@@ -199,7 +199,14 @@ int main(int argc, char *argv[])
 #endif
 		convertBin32(code, bincode);
 		Power433_decodeCommand(code, &rfsysid, &rfdevid, &rfbtn);
-		printf("code = %lu , 0x%08X , %s , %d : %c : %s\n", code, code, bincode, rfsysid, 'A' + rfdevid, rfbtn ? "ON" : "OFF");
+		printf("code = %lu , 0x%08X , %s , %d : %s%s%s%s%s : %s\n", code,
+		       code, bincode, rfsysid,
+		       rfdevid & POWER433_DEVICE_A ? "A" : "",
+		       rfdevid & POWER433_DEVICE_B ? "B" : "",
+		       rfdevid & POWER433_DEVICE_C ? "C" : "",
+		       rfdevid & POWER433_DEVICE_D ? "D" : "",
+		       rfdevid & POWER433_DEVICE_E ? "E" : "",
+		       rfbtn ? "ON" : "OFF");
 	
 #ifdef POWER433_INCLUDE_TIMING_STATS
 		/* statistics */	
