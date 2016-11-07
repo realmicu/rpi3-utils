@@ -241,7 +241,7 @@ unsigned int Power433_encodeCommand(unsigned int systemid,
 	       (tmpsysid & 0x1)) << 14) + ((((tmpdevid & 0x10) << 4) + \
 	       ((tmpdevid & 0x8) << 3) + ((tmpdevid & 0x4) << 2) + \
 	       ((tmpdevid & 0x2) << 1) + (tmpdevid & 0x1)) << 4) + \
-	       (0x1 << ((button & 0x1) << 1));
+	       (0x1 << ((~button & 0x1) << 1));
 }
 
 /* Send command */
