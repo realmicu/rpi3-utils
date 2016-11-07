@@ -59,6 +59,14 @@ int Power433_sendCommand(unsigned int systemid, unsigned int deviceid,
 int Power433_decodeCommand(unsigned int code, int *systemid,
 			   int *deviceid, int *button);
 
+/* Construct raw code for power switches, ie: Kemot: */
+/*   systemid - 5-bit System Code (0-31) */
+/*   deviceid - button letter (channel) mask (5 bits) */
+/*   button   - power button (0-OFF, 1-ON) */
+unsigned int Power433_encodeCommand(unsigned int systemid,
+				    unsigned int deviceid,
+				    unsigned int button);
+
 /* Get pulse type: */
 /*   0 - sync pulse */
 /*   1 - short pulse */

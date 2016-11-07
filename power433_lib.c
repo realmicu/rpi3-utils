@@ -201,30 +201,6 @@ void Power433_repeatCode(unsigned int txcode, int n)
 	delayMicroseconds(POWER433_TX_SHORT_TIME);
 }
 
-/* Send command */
-int Power433_sendCommand(unsigned int systemid, unsigned int deviceid,
-			 unsigned int button)
-{
-	unsigned int tmpsysid, tmpdevid, tmpcode;
-
-	if (txgpio < 0)
-		return -1;
-
-	tmpsysid = ~systemid & 0x1F;
-	tmpdevid = ~deviceid & 0x1F;
-	tmpcode = ((((tmpsysid & 0x10) << 4) + ((tmpsysid & 0x8) << 3) + \
-		  ((tmpsysid & 0x4) << 2) + ((tmpsysid & 0x2) << 1) + \
-		  (tmpsysid & 0x1)) << 14) + ((((tmpdevid & 0x10) << 4) + \
-		  ((tmpdevid & 0x8) << 3) + ((tmpdevid & 0x4) << 2) + \
-		  ((tmpdevid & 0x2) << 1) + (tmpdevid & 0x1)) << 4) + \
-		  (0x1 << ((button & 0x1) << 1));
-
-	/* send code a few times */
-	Power433_repeatCode(tmpcode, POWER433_RETRANS);
-
-	return 0;
-}
-
 /* Decode RF keycode */
 int Power433_decodeCommand(unsigned int code, int *systemid,
 			   int *deviceid, int *button)
@@ -247,6 +223,40 @@ int Power433_decodeCommand(unsigned int code, int *systemid,
 		*button = -1;
 		return -1;
 	}
+
+	return 0;
+}
+
+/* Contruct RF keycode */
+unsigned int Power433_encodeCommand(unsigned int systemid,
+                                    unsigned int deviceid,
+                                    unsigned int button)
+{
+	unsigned int tmpsysid, tmpdevid;
+
+	tmpsysid = ~systemid & 0x1F;
+	tmpdevid = ~deviceid & 0x1F;
+	return ((((tmpsysid & 0x10) << 4) + ((tmpsysid & 0x8) << 3) + \
+	       ((tmpsysid & 0x4) << 2) + ((tmpsysid & 0x2) << 1) + \
+	       (tmpsysid & 0x1)) << 14) + ((((tmpdevid & 0x10) << 4) + \
+	       ((tmpdevid & 0x8) << 3) + ((tmpdevid & 0x4) << 2) + \
+	       ((tmpdevid & 0x2) << 1) + (tmpdevid & 0x1)) << 4) + \
+	       (0x1 << ((button & 0x1) << 1));
+}
+
+/* Send command */
+int Power433_sendCommand(unsigned int systemid, unsigned int deviceid,
+			 unsigned int button)
+{
+	unsigned int tmpcode;
+
+	if (txgpio < 0)
+		return -1;
+
+	tmpcode = Power433_encodeCommand(systemid, deviceid, button);
+
+	/* send code a few times */
+	Power433_repeatCode(tmpcode, POWER433_RETRANS);
 
 	return 0;
 }
