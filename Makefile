@@ -63,7 +63,7 @@ lcd_chars:	lcd_chars.c
 	$(CC) -o $@ $< $(CFLAGS) $(HD44780_EXTRA_LIBS)
 
 lcdproc_env:	lcdproc_env.c htu21d_lib.o bmp180_lib.o
-	$(CC) -o $@ $^ $(CFLAGS) $(HD44780_EXTRA_LIBS)
+	$(CC) -o $@ $^ $(CFLAGS) $(HD44780_EXTRA_LIBS) -pthread
 
 lcd_env_show_fs:	lcd_env_show_fs.c
 	$(CC) -o $@ $< $(CFLAGS) $(HD44780_EXTRA_LIBS) -lncurses
