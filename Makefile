@@ -7,7 +7,7 @@ CFLAGS = -I.
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
-	power433send power433control
+	power433send power433control bh1750_test
 
 #################
 # General rules #
@@ -46,6 +46,18 @@ bmp180_lib.o:	bmp180_lib.c
 
 bmp180_test:	bmp180_test.c bmp180_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(BMP180_EXTRA_LIBS)
+
+#####################################
+# BH1750 Ambient Light sensor (I2C) #
+#####################################
+
+BH1750_EXTRA_LIBS = -lwiringPi
+
+bh1750_lib.o:	bh1750_lib.c
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+bh1750_test:	bh1750_test.c bh1750_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(BH1750_EXTRA_LIBS) -pthread
 
 ##############################
 # HD44780 LCD display (GPIO) #
