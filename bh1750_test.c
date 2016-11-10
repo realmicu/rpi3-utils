@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <time.h>
 #include <sys/time.h>
 
 #include <fcntl.h>		/* For O_* constants */
@@ -51,6 +52,7 @@ int main(int argc, char *argv[])
 	int opt, semflg, tsflg, cntsec;
 	sem_t *i2csem;
 	struct timeval t;
+	struct tm *tl;
 	double lx;
 
 	/* analyze command line */
@@ -96,12 +98,17 @@ int main(int argc, char *argv[])
 
 	/* read luminance */
 	for(;;)	{
-		gettimeofday(&t, NULL);
+		if (tsflg) {
+			gettimeofday(&t, NULL);
+			tl = localtime(&t.tv_sec);
+			printf("%d-%02d-%02d %02d:%02d:%02d.%03u   ",
+			       1900 + tl->tm_year, tl->tm_mon + 1,
+			       tl->tm_mday, tl->tm_hour, tl->tm_min,
+			       tl->tm_sec, t.tv_usec / 1000);
+		}
 		i2cLock(semflg, i2csem);
 		lx = BH1750_getLx(fd);
 		i2cUnlock(semflg, i2csem);
-		if (tsflg)
-			printf("%lu.%03u   ", t.tv_sec, t.tv_usec / 1000);
 		printf("L = %.3lf lx\n", lx);
 		if (cntsec)
 			sleep(cntsec);
