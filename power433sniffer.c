@@ -5,6 +5,7 @@
 #include <time.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -41,6 +42,18 @@ void convertBin32(int a, char *s)
 		mask = mask >> 1;
 	}
 	s[32] = 0;
+}
+
+void getTimestamp(char *s)
+{
+	struct timeval t;
+	struct tm *tl;
+
+	gettimeofday(&t, NULL);
+	tl = localtime(&t.tv_sec);
+	snprintf(s, 24, "%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
+		 tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
+		 tl->tm_sec, t.tv_usec / 1000);
 }
 
 /* Update min, max, sum and length for pulse array*/
@@ -111,7 +124,7 @@ int main(int argc, char *argv[])
 {
 	int gpio;
 	unsigned int code;
-	char bincode[33];
+	char bincode[33], tstring[25];
 	int rfsysid, rfdevid, rfbtn;
 
 #ifdef POWER433_INCLUDE_TIMING_STATS
@@ -197,10 +210,11 @@ int main(int argc, char *argv[])
 #ifdef POWER433_INCLUDE_TIMING_STATS
 		Power433_getTimingStats(&stat_sync, stat_pbuf);
 #endif
+		getTimestamp(tstring);
 		convertBin32(code, bincode);
 		Power433_decodeCommand(code, &rfsysid, &rfdevid, &rfbtn);
-		printf("code = %lu , 0x%08X , %s , %d : %s%s%s%s%s : %s\n", code,
-		       code, bincode, rfsysid,
+		printf("%s  code = %lu , 0x%08X , %s , %d : %s%s%s%s%s : %s\n",
+		       tstring, code, code, bincode, rfsysid,
 		       rfdevid & POWER433_DEVICE_A ? "A" : "",
 		       rfdevid & POWER433_DEVICE_B ? "B" : "",
 		       rfdevid & POWER433_DEVICE_C ? "C" : "",
