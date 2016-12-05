@@ -7,7 +7,7 @@ CFLAGS = -I.
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
-	power433send power433control bh1750_test
+	power433send power433control bh1750_test env_mon
 
 #################
 # General rules #
@@ -130,6 +130,15 @@ power433send:		power433send.c power433_lib.o
 
 power433control:	power433control.c power433_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(POWER433_EXTRA_LIBS)
+
+##################
+# Sensor monitor #
+##################
+
+ENVMON_EXTRA_LIBS = -lwiringPi -lncurses -pthread
+
+env_mon:	env_mon.c htu21d_lib.o bmp180_lib.o bh1750_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(ENVMON_EXTRA_LIBS)
 
 ##################
 # Other programs #
