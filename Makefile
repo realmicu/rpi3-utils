@@ -7,7 +7,7 @@ CFLAGS = -I.
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
-	power433send power433control bh1750_test env_mon
+	power433send power433control bh1750_test env_mon ssd1306_test
 
 #################
 # General rules #
@@ -139,6 +139,18 @@ ENVMON_EXTRA_LIBS = -lwiringPi -lncurses -pthread
 
 env_mon:	env_mon.c htu21d_lib.o bmp180_lib.o bh1750_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(ENVMON_EXTRA_LIBS)
+
+#####################
+# OLED screen (SPI) #
+#####################
+
+OLED_EXTRA_LIBS = -lwiringPi
+
+oled_lib.o:	oled_lib.c
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+ssd1306_test:	ssd1306_test.c oled_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(OLED_EXTRA_LIBS)
 
 ##################
 # Other programs #
