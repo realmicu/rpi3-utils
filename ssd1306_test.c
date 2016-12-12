@@ -34,7 +34,7 @@ void help(char *progname)
 int main(int argc, char *argv[])
 {
 	int fd;
-	int i;
+	int i, a;
 
 	wiringPiSetupGpio();
 
@@ -47,33 +47,58 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	puts("Powering on display.");
-	OLED_powerOn(fd);
+	a = argc - 1;
 
-	puts("OK, waiting 5 seconds...");
-	sleep(5);
+	if (a) {
+		if (a > 8)
+			a = 8;
+		OLED_powerOn(fd);
+		OLED_clearDisplay(fd);
+		for(i = 0; i < a; i++)
+			OLED_putString(fd, OLED_DEFAULT_FONT, 0, i, 0,
+				       argv[i + 1]);
+	}
+	else {
+		/* no arguments - predefined test procedures */
+		puts("Powering on display.");
+		OLED_powerOn(fd);
 
-	puts("Zeroing video memory.");
-	OLED_clearDisplay(fd);
-
-	puts("OK, waiting 5 seconds...");
-	sleep(5);
-
-	for(i = 0; i < 6; i++) {
-		printf("Test pattern %d.\n", i);
-		OLED_testPattern(fd, i);
 		puts("OK, waiting 5 seconds...");
 		sleep(5);
-	}
+
+		puts("Zeroing video memory.");
+		OLED_clearDisplay(fd);
+
+		puts("OK, waiting 5 seconds...");
+		sleep(5);
+
+		for(i = 0; i < 6; i++) {
+			printf("Test pattern %d.\n", i);
+			OLED_testPattern(fd, i);
+			puts("OK, waiting 5 seconds...");
+			sleep(5);
+		}
 	
-	puts("Test font.");
-	OLED_testFont(fd, 0);
+		puts("Test font.");
+		OLED_testFont(fd, 0);
 
-	puts("OK, waiting 5 seconds...");
-	sleep(5);
+		puts("OK, waiting 5 seconds...");
+		sleep(5);
 
-	puts("Powering off display.");
-	OLED_powerOff(fd);
+		puts("Displaying some characters.");
+		OLED_clearDisplay(fd);
+		for(i = 0; i < 8; i++) {
+			OLED_putChar(fd, OLED_DEFAULT_FONT, 0 + (i << 3), i, i & 1, 'T');
+			OLED_putChar(fd, OLED_DEFAULT_FONT, 6 + (i << 3), i, i & 1,  'e');
+			OLED_putChar(fd, OLED_DEFAULT_FONT, 12 + (i << 3), i, i & 1, 's');
+			OLED_putChar(fd, OLED_DEFAULT_FONT, 18 + (i << 3), i, i & 1, 't');
+		}
+		puts("OK, waiting 5 seconds...");
+		sleep(5);
+
+		puts("Powering off display.");
+		OLED_powerOff(fd);
+	}
 
 	return 0;
 }

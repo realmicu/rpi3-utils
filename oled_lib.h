@@ -4,6 +4,9 @@
 /* OLED types */
 #define ADAFRUIT_SSD1306_128_64		1
 
+/* Default font */
+#define OLED_DEFAULT_FONT		0	/* 5x7 font */
+
 /* Initialize device */
 int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin);
 
@@ -27,5 +30,18 @@ void OLED_testPattern(int fd, int type);
 /* Show test font */
 /* start - ASCII code of first character */
 void OLED_testFont(int fd, int start);
+
+/* Print character */
+/* x is column in pixels and row is y coordinate in bytes (pages!) */
+/* function returns x column of next character */
+int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c);
+
+/* Print string */
+/* x - column in pixels */
+/* row - y coordinate in bytes (pages!) */
+/* inv - 1 for inversed background */
+/* Return: x coordinate for next letter (may be wrapped) */
+int OLED_putString(int fd, int fontid, int x, int row, int inv,
+                   const unsigned char *s);
 
 #endif
