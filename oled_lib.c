@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
@@ -73,7 +75,7 @@ struct fontDesc {
 	int	fontLJustB, fontSizeB, fontCellSz;
 };
 static struct fontDesc fnt[MAX_FONTS];
-static int fntcnt, curfnt;
+static int fntcnt;
 
 /* ************************** */
 /* ************************** */
@@ -344,15 +346,22 @@ void OLED_testFont(int fd, int start)
 /* x - column in pixels */
 /* row - y coordinate in bytes (pages!) */
 /* inv - 1 for inversed background */
-/* Return: x coordinate for next letter (may be wrapped) */
+/* Return: x coordinate for next letter */
 int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 {
 	struct fontDesc *ft;
 	unsigned char *tptr, *cptr;
 
+	if (fontid >= fntcnt)
+		return -1;
+
 	ft = &fnt[fontid];
 
 	if (oled_type == ADAFRUIT_SSD1306_128_64) {
+		/* we do not clip on-screen */
+		if (row < 0 || row + ft->fontByteH > 8 ||
+		    x < 0 || x + ft->fontCellW > 128)
+			return -1;
 		tptr = ft->fontImg + c * ft->fontSizeB;
 		cptr = (unsigned char *)malloc(ft->fontCellSz);
 		memset(cptr, 0, ft->fontCellSz);
@@ -382,7 +391,7 @@ int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 /* x - column in pixels */
 /* row - y coordinate in bytes (pages!) */
 /* inv - 1 for inversed background */
-/* Return: x coordinate for next letter (may be wrapped) */
+/* Return: x coordinate for next letter */
 int OLED_putString(int fd, int fontid, int x, int row, int inv,
 		   const unsigned char *s)
 {
@@ -390,13 +399,22 @@ int OLED_putString(int fd, int fontid, int x, int row, int inv,
 	struct fontDesc *ft;
 	unsigned char *tptr, *cptr;
 
+	if (fontid >= fntcnt)
+		return -1;
+
 	ft = &fnt[fontid];
 
 	len = strlen(s);
 	if (!len)
 		return -1;
+	if (row < 0 || x < 0)
+		return -1;
 
 	if (oled_type == ADAFRUIT_SSD1306_128_64) {
+		if (row + ft->fontByteH > 8)
+			return -1;	/* we do not clip vertically */
+		if (x + len * ft->fontCellW > 128)
+			len = (128 - x) / ft->fontCellW;
 		memlen = len * ft->fontCellSz;
 		memw = len * ft->fontCellW;
 		cptr = (unsigned char *)malloc(memlen);
@@ -425,6 +443,75 @@ int OLED_putString(int fd, int fontid, int x, int row, int inv,
 	}
 
 	return -1;
+}
+
+/* Load PSF font file (256 chars, no Unicode) and return fontid */
+int OLED_loadPsf(const unsigned char *psffile)
+{
+	int psfd;
+	struct psf2_header ph;
+	unsigned char *buf;
+	struct fontDesc *ft;
+	int c, i, j, obh, tjust, ibw, ilw;
+	unsigned char omask, imask;
+
+	psfd = open(psffile, O_RDONLY);
+	if (psfd < 0)
+		return -1;
+	read(psfd, &ph, sizeof(struct psf2_header));
+	if (!PSF2_MAGIC_OK(ph.magic))
+		return -1;	/* not a PSF file */
+	if (ph.version > PSF2_MAXVERSION)
+		return -1;	/* wrong version */
+	if (ph.flags || ph.length != 256)
+		return -1;	/* only ASCII charset supported */
+
+	ft = &fnt[fntcnt];
+
+	ft->fontWidth = ph.width;
+	ft->fontHeight = ph.height;
+	ft->fontByteH = (ph.height + 7) >> 3;
+	ft->fontCellW = ph.width;
+	OLED_fontCalc(ft);
+	ft->fontImg = (unsigned char *)malloc(ft->fontCellSz * ph.length);
+	memset(ft->fontImg, 0, ft->fontCellSz * ph.length);
+	ilw = (ph.width + 7) >> 3;
+	tjust = ((ft->fontByteH << 3) - ft->fontHeight + 1) >> 1;
+	buf = (unsigned char *)malloc(ph.charsize);
+	for(c = 0; c < 256; c++) {
+		read(psfd, buf, ph.charsize);
+		for(i = 0; i < ph.height; i++) {
+			omask = 1 << ((i + tjust) & 0x07);
+			obh = (i + tjust) >> 3;
+			for(j = 0; j < ph.width; j++) {
+				imask = 1 << (7 - (j & 0x07));
+				ibw = j >> 3;
+				if (buf[i * ilw + ibw] & imask)
+					ft->fontImg[c * ft->fontCellSz + \
+					+ j * ft->fontByteH + obh] |= omask;
+			}
+		}
+	}
+
+	free(buf);
+	close(psfd);
+
+	return fntcnt++;
+}
+
+/* Get font screen dimensions */
+/* Returns height in bytes (pages) */
+int OLED_getFontScreenSize(int fontid, int *cellwidth, int *cellheight)
+{
+	if (fontid >= fntcnt)
+		return -1;
+
+	if (cellwidth)
+		*cellwidth = fnt[fontid].fontCellW;
+	if (cellheight)
+		*cellheight = fnt[fontid].fontByteH << 3;
+
+	return fnt[fontid].fontByteH;
 }
 
 /* ********************* */

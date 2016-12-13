@@ -44,4 +44,11 @@ int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c);
 int OLED_putString(int fd, int fontid, int x, int row, int inv,
                    const unsigned char *s);
 
+/* Load PSF font file (256 chars, no Unicode) and return fontid */
+int OLED_loadPsf(const unsigned char *psffile);
+
+/* Get font screen dimensions */
+/* Return: height in bytes (pages) */
+int OLED_getFontScreenSize(int fontid, int *cellwidth, int *cellheight);
+
 #endif

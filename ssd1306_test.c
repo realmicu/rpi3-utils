@@ -17,15 +17,12 @@
 
 /* Show help */
 
-/*
 void help(char *progname)
 {
-	printf("Usage:\n\t%s [-s] [-t] [-c N]\n\n", progname);
+	printf("Usage:\n\t%s string0 ... stringN\n\n", progname);
 	puts("Where:");
-	puts("\t-s\t - use system-wide user semaphore for I2C bus access (optional)");
-	puts("\t-t\t - include timestamp (optional)");
-	puts("\t-c N\t - run continously every N seconds (optional)");
-} */
+	puts("\tstringN\t - text to display on row N");
+}
 
 /* ********** */
 /* *  MAIN  * */
@@ -45,6 +42,11 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Unable to open SPI device: %s\n",
 			strerror (errno));
 		exit(-1);
+	}
+
+	if (!strcmp(argv[1], "--?")) {
+		help(argv[0]);
+		exit(0);
 	}
 
 	a = argc - 1;

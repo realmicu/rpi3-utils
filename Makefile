@@ -7,7 +7,8 @@ CFLAGS = -I.
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
-	power433send power433control bh1750_test env_mon ssd1306_test
+	power433send power433control bh1750_test env_mon ssd1306_test \
+	ssd1306_font
 
 #################
 # General rules #
@@ -150,6 +151,9 @@ oled_lib.o:	oled_lib.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 ssd1306_test:	ssd1306_test.c oled_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(OLED_EXTRA_LIBS)
+
+ssd1306_font:	ssd1306_font.c oled_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(OLED_EXTRA_LIBS)
 
 ##################
