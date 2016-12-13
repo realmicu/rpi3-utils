@@ -56,9 +56,11 @@ int main(int argc, char *argv[])
 	if (!strcmp(argv[1], "-u")) {
 		n = 2;
 		noclr = 1;
+		allch = 0;
 	} else if (!strcmp(argv[1], "-a")) {
 		n = 2;
 		allch = 1;
+		noclr = 0;
 	} else {
 		n = 1;
 		noclr = 0;
