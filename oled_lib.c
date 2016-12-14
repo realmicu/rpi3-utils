@@ -522,7 +522,7 @@ int OLED_loadPsf(const unsigned char *psffile)
 /* Get font screen dimensions */
 /* Returns height in bytes (pages) */
 int OLED_getFontScreenSize(int fontid, int *width, int *height,
-			   int *cellwidth, int *cellheight)
+			   int *cellwidth, int *cellheight, int *byteheight)
 {
 	if (fontid >= fntcnt)
 		return -1;
@@ -535,8 +535,10 @@ int OLED_getFontScreenSize(int fontid, int *width, int *height,
 		*cellwidth = fnt[fontid].fontCellW;
 	if (cellheight)
 		*cellheight = fnt[fontid].fontByteH << 3;
+	if (byteheight)
+		*byteheight = fnt[fontid].fontByteH;
 
-	return fnt[fontid].fontByteH;
+	return fnt[fontid].fontSizeB;
 }
 
 /* Returns pointer to font memory area and its size in bytes */
