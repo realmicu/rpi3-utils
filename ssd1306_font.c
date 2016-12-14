@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
 		/* all character dump mode */
 		OLED_powerOn(fd);
 		OLED_clearDisplay(fd);
-		hb = OLED_getFontScreenSize(fontid, &cw, NULL);
+		hb = OLED_getFontScreenSize(fontid, NULL, NULL, &cw, NULL);
 		x = 0;
 		row = 0;
 		for(i = 0; i < 256; i++) {
@@ -99,7 +99,8 @@ int main(int argc, char *argv[])
 		if (a) {
 			if (a > 8)
 				a = 8;
-			hb = OLED_getFontScreenSize(fontid, NULL, NULL);
+			hb = OLED_getFontScreenSize(fontid, NULL, NULL,
+						    NULL, NULL);
 			if (!noclr) {
 				OLED_powerOn(fd);
 				OLED_clearDisplay(fd);

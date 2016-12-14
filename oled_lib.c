@@ -449,8 +449,10 @@ int OLED_putString(int fd, int fontid, int x, int row, int inv,
 int OLED_loadPsf(const unsigned char *psffile)
 {
 	int psfd;
-	struct psf2_header ph;
-	unsigned char *buf;
+	struct psf1_header ph1;
+	struct psf2_header ph2;
+	unsigned int hdr_numchars, hdr_charsize;
+	unsigned char magic[4], *buf;
 	struct fontDesc *ft;
 	int c, i, j, obh, tjust, ibw, ilw;
 	unsigned char omask, imask;
@@ -458,32 +460,50 @@ int OLED_loadPsf(const unsigned char *psffile)
 	psfd = open(psffile, O_RDONLY);
 	if (psfd < 0)
 		return -1;
-	read(psfd, &ph, sizeof(struct psf2_header));
-	if (!PSF2_MAGIC_OK(ph.magic))
-		return -1;	/* not a PSF file */
-	if (ph.version > PSF2_MAXVERSION)
-		return -1;	/* wrong version */
-	if (ph.flags || ph.length != 256)
-		return -1;	/* only ASCII charset supported */
 
 	ft = &fnt[fntcnt];
 
-	ft->fontWidth = ph.width;
-	ft->fontHeight = ph.height;
-	ft->fontByteH = (ph.height + 7) >> 3;
-	ft->fontCellW = ph.width;
+	read(psfd, &magic, 4);
+	lseek(psfd, 0, SEEK_SET);
+	if (PSF1_MAGIC_OK(magic)) {
+		/* PSF v1 - always 8-bit wide */
+		read(psfd, &ph1, sizeof(struct psf1_header));
+		if (ph1.mode)
+			return -1;	/* wrong mode */
+		ft->fontWidth = 8;
+		ft->fontHeight = ph1.charsize;
+		ft->fontCellW = 8;
+		ft->fontByteH = (ph1.charsize + 7) >> 3;
+		hdr_numchars = 256;
+		hdr_charsize = ph1.charsize;
+	} else if (PSF2_MAGIC_OK(magic)) {
+		/* PSF v2 - newer and more flexible */
+		read(psfd, &ph2, sizeof(struct psf2_header));
+		if (ph2.version > PSF2_MAXVERSION)
+			return -1;	/* wrong version */
+		if (ph2.flags || ph2.length != 256)
+			return -1;	/* only ASCII charset supported */
+		ft->fontWidth = ph2.width;
+		ft->fontHeight = ph2.height;
+		ft->fontCellW = ph2.width;
+		ft->fontByteH = (ph2.height + 7) >> 3;
+		hdr_numchars = ph2.length;
+		hdr_charsize = ph2.charsize;
+	} else
+		return -1;
+
 	OLED_fontCalc(ft);
-	ft->fontImg = (unsigned char *)malloc(ft->fontCellSz * ph.length);
-	memset(ft->fontImg, 0, ft->fontCellSz * ph.length);
-	ilw = (ph.width + 7) >> 3;
+	ft->fontImg = (unsigned char *)malloc(ft->fontCellSz * hdr_numchars);
+	memset(ft->fontImg, 0, ft->fontCellSz * hdr_numchars);
+	ilw = (ft->fontWidth + 7) >> 3;
 	tjust = ((ft->fontByteH << 3) - ft->fontHeight + 1) >> 1;
-	buf = (unsigned char *)malloc(ph.charsize);
+	buf = (unsigned char *)malloc(hdr_charsize);
 	for(c = 0; c < 256; c++) {
-		read(psfd, buf, ph.charsize);
-		for(i = 0; i < ph.height; i++) {
+		read(psfd, buf, hdr_charsize);
+		for(i = 0; i < ft->fontHeight; i++) {
 			omask = 1 << ((i + tjust) & 0x07);
 			obh = (i + tjust) >> 3;
-			for(j = 0; j < ph.width; j++) {
+			for(j = 0; j < ft->fontWidth; j++) {
 				imask = 1 << (7 - (j & 0x07));
 				ibw = j >> 3;
 				if (buf[i * ilw + ibw] & imask)
@@ -501,17 +521,34 @@ int OLED_loadPsf(const unsigned char *psffile)
 
 /* Get font screen dimensions */
 /* Returns height in bytes (pages) */
-int OLED_getFontScreenSize(int fontid, int *cellwidth, int *cellheight)
+int OLED_getFontScreenSize(int fontid, int *width, int *height,
+			   int *cellwidth, int *cellheight)
 {
 	if (fontid >= fntcnt)
 		return -1;
 
+	if (width)
+		*width = fnt[fontid].fontWidth;
+	if (height)
+		*height = fnt[fontid].fontHeight;
 	if (cellwidth)
 		*cellwidth = fnt[fontid].fontCellW;
 	if (cellheight)
 		*cellheight = fnt[fontid].fontByteH << 3;
 
 	return fnt[fontid].fontByteH;
+}
+
+/* Returns pointer to font memory area and its size in bytes */
+unsigned char *OLED_getFontImage(int fontid, int *bytes)
+{
+	if (fontid >= fntcnt)
+		return NULL;
+
+	if (bytes)
+		*bytes = fnt[fontid].fontSizeB << 8;
+
+	return fnt[fontid].fontImg;
 }
 
 /* ********************* */
