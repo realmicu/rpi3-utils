@@ -11,7 +11,8 @@
 #include "oled_lib.h"
 
 #include "glcdfont.h"	/* from Adafruit GFX Library */
-#include "psf.h"	/* from kbd-project.org */
+#include "psf_header.h"	/* from kbd-project.org */
+#include "bmp_header.h"
 
 /* *********************** */
 /* *  SSD1306 SPI 128x64 * */
@@ -573,6 +574,35 @@ unsigned char *OLED_getFontImage(int fontid, int *bytes)
 		*bytes = fnt[fontid].fontSizeB << 8;
 
 	return fnt[fontid].fontImg;
+}
+
+/* Load image directly to screen at (x, row) position */
+/* X coordinates are in pixels and Y values are in bytes (pages) */
+void OLED_putImage(int fd, int x, int row, int width, int byteheight,
+		   unsigned char *img)
+{
+	int w;
+
+	if (row < 0 || x < 0)
+		return;
+
+	if (oled_type == ADAFRUIT_SSD1306_128_64) {
+		if (row + byteheight > 8)
+			return;		/* we do not clip vertically */
+		w = x + width > 128 ? 128 - x : width;
+
+		digitalWrite(oled_dc_pin, LOW);
+		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
+		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_V);
+		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
+		OLED_spiWrite(fd, x);
+		OLED_spiWrite(fd, x + w - 1);
+		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
+		OLED_spiWrite(fd, row);
+		OLED_spiWrite(fd, row + byteheight - 1);
+		digitalWrite(oled_dc_pin, HIGH);
+		write(fd, img, w * byteheight);
+	}
 }
 
 /* ********************* */

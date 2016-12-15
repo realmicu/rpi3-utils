@@ -59,4 +59,9 @@ int OLED_getFontScreenSize(int fontid, int *width, int *height,
 /* Returns pointer to font memory area and its size in bytes */
 unsigned char *OLED_getFontImage(int fontid, int *bytes);
 
+/* Load image directly to screen at (x, row) position */
+/* X coordinates are in pixels and Y values are in bytes (pages) */
+void OLED_putImage(int fd, int x, int row, int width, int byteheight,
+                   unsigned char *img);
+
 #endif
