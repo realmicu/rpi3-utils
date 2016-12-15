@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
 	int fontid;
 	unsigned char *fi;
 	int fl;
-	int i, j, w, h, cw, ch, bh, chsz, bp;
+	int i, j, w, h, cw, ch, bh, chsz;
 
 	if (argc < 2 || !strcmp(argv[1], "--?")) {
 		help(argv[0]);

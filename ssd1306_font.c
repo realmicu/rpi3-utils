@@ -36,7 +36,6 @@ int main(int argc, char *argv[])
 	int fd;
 	int i, n, a, fontid, hb, noclr;
 	int allch, cw, x, row;
-	unsigned char buf[256];
 
 	wiringPiSetupGpio();
 

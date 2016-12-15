@@ -143,14 +143,10 @@ int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin)
 			zero = (unsigned char *)malloc(memsize);
 			memset(zero, 0, memsize);
 
-			/* load default font (id=0) */
-			fnt[0].fontWidth = 5;
-			fnt[0].fontHeight = 7;
-			fnt[0].fontByteH = 1;
-			fnt[0].fontCellW = 6;	/* pad to 6 pixels */
-			fnt[0].fontImg = font;
-			OLED_fontCalc(&fnt[0]);
-			fntcnt = 1;
+			/* load default font (id=0), size 5x7, */
+			/* width padded to 6 pixels, 1-byte high */
+			fntcnt = 0;
+			OLED_loadFont(5, 7, 6, 1, font);
 		}
 	} else
 		fd = -1;
@@ -457,6 +453,9 @@ int OLED_loadPsf(const unsigned char *psffile)
 	int c, i, j, obh, tjust, ibw, ilw;
 	unsigned char omask, imask;
 
+	if (fntcnt == MAX_FONTS)
+		return -1;
+
 	psfd = open(psffile, O_RDONLY);
 	if (psfd < 0)
 		return -1;
@@ -515,6 +514,29 @@ int OLED_loadPsf(const unsigned char *psffile)
 
 	free(buf);
 	close(psfd);
+
+	return fntcnt++;
+}
+
+/* Load font from memory (compatible with OLED vertical addresing mode) */
+/* Use this function to access fonts defined in header files */
+/* Note: does not copy memory - uses original pointer */
+int OLED_loadFont(int width, int height, int cellwidth, int byteheight,
+		  unsigned char *dataptr)
+{
+	struct fontDesc *ft;
+
+	if (fntcnt == MAX_FONTS)
+		return -1;
+
+	ft = &fnt[fntcnt];
+
+	ft->fontWidth = width;
+	ft->fontHeight = height;
+	ft->fontCellW = cellwidth;
+	ft->fontByteH = byteheight;
+	ft->fontImg = dataptr;
+	OLED_fontCalc(ft);
 
 	return fntcnt++;
 }

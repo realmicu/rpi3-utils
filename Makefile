@@ -3,7 +3,7 @@
 ##########
 
 CC = gcc
-CFLAGS = -I.
+CFLAGS = -I. -Wunused
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
