@@ -565,7 +565,7 @@ int OLED_getFontScreenSize(int fontid, int *width, int *height,
 }
 
 /* Returns pointer to font memory area and its size in bytes */
-unsigned char *OLED_getFontImage(int fontid, int *bytes)
+unsigned char *OLED_getFontMemory(int fontid, int *bytes)
 {
 	if (fontid >= fntcnt)
 		return NULL;

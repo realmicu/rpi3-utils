@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	fi = OLED_getFontImage(fontid, &fl);
+	fi = OLED_getFontMemory(fontid, &fl);
 	if (!fi)
 		exit(-1);
 	chsz = OLED_getFontScreenSize(fontid, &w, &h, &cw, &ch, &bh);
