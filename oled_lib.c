@@ -61,11 +61,14 @@ static int oled_rst_pin, oled_dc_pin;
 static int memsize;		/* display memory in bytes */
 static unsigned char *zero;	/* for display zeroing */
 
-/* Font data */
-/* index = 0 - standard 5x7(5*8) GLCD font from glcdfont.h */
-/* index > 0 - dynamically loaded fonts */
-/* Fonts with height larger than one byte (page) are stored as follows: */
-/* upper_byte_0, lower_byte_0, upper_byte_1, lower_byte_1, ... */
+/*
+ * Font data.
+ *
+ * index = 0 - standard 5x7(5*8) GLCD font from glcdfont.h
+ * index > 0 - dynamically loaded fonts
+ * Fonts with height larger than one byte (page) are stored as follows:
+ * upper_byte_0, lower_byte_0, upper_byte_1, lower_byte_1, ...
+ */
 
 struct fontDesc {
 	int	fontWidth, fontHeight;	/* in pixels */
@@ -78,17 +81,37 @@ struct fontDesc {
 static struct fontDesc fnt[MAX_FONTS];
 static int fntcnt;
 
+/*
+ * Image data.
+ *
+ * Similar to fonts, all images get an ID when loaded and stay in memory
+ * until process dies. Data is allocated dynamically though as there is
+ * no hardcoded limit for number of images. Images loaded directly to
+ * screen do not use mask (no read access to GDRAM).
+ */
+
+struct imgDesc {
+	int imgHeight, imgWidth;
+	int imgLen;
+	unsigned char *imgData;
+	unsigned char *maskData;
+};
+static struct imgDesc *img;
+static int imgcnt;
+
 /* ************************** */
 /* ************************** */
 /* **  Internal functions  ** */
 /* ************************** */
 /* ************************** */
 
+/* Basic byte write */
 static int OLED_spiWrite(int fd, unsigned char byte)
 {
 	return write(fd, &byte, 1);
 }
 
+/* Calculate speedup values for font */
 static void OLED_fontCalc(struct fontDesc *fnd)
 {
 	/* how many empty vertical bytes (pages) to pad left */
@@ -100,6 +123,7 @@ static void OLED_fontCalc(struct fontDesc *fnd)
 	fnd->fontCellSz = fnd->fontCellW * fnd->fontByteH;
 }
 
+/* Invert (negate) image */
 static void OLED_invMem(unsigned char *s, int len)
 {
 	int i;
@@ -114,7 +138,18 @@ static void OLED_invMem(unsigned char *s, int len)
 /* ************************ */
 /* ************************ */
 
-/* Initialize device */
+/*
+ * Initialize device.
+ *
+ *   Parameters:
+ *     type 	- screen type
+ *     cs	- SPI slave number (0/1 on Rpi3)
+ *     rst_pin	- reset GPIO pin (BCM number)
+ *     dc_pin	- Data/Command GPIO pin (BCM number)
+ *
+ *   Return:
+ *     File descriptor of SPI device or -1 if error
+ */
 int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin)
 {
 	int fd;
@@ -148,6 +183,10 @@ int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin)
 			/* width padded to 6 pixels, 1-byte high */
 			fntcnt = 0;
 			OLED_loadFont(5, 7, 6, 1, font);
+
+			/* no predefined images */
+			imgcnt = 0;
+			img = NULL;
 		}
 	} else
 		fd = -1;
@@ -155,7 +194,9 @@ int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin)
 	return fd;
 }
 
-/* Device power on */
+/* 
+ * Device power on.
+ */
 void OLED_powerOn(int fd)
 {
 	if (oled_type == ADAFRUIT_SSD1306_128_64) {
@@ -237,7 +278,9 @@ void OLED_powerOn(int fd)
 	}
 }
 
-/* Device power off */
+/*
+ * Device power off.
+ */
 void OLED_powerOff(int fd)
 {
 	if (oled_type == ADAFRUIT_SSD1306_128_64) {
@@ -246,14 +289,19 @@ void OLED_powerOff(int fd)
 	}
 }
 
-/* *********************** */
-/* Direct access functions
-/* *********************** */
-/* These operate on text (full byte) fields without any need
-   to modify data already on screen (no transparency etc),
-   therefore no framebuffer is needed. */
+/*
+ * ***********************
+ * Direct access functions
+ * ***********************
+ *
+ * These operate on text (full byte) fields without any need
+ * to modify data already on screen (no transparency etc),
+ * therefore no framebuffer is needed.
+ */
 
-/* Clear display screen */
+/*
+ * Clear display screen.
+ */
 void OLED_clearDisplay(int fd)
 {
 	if (oled_type == ADAFRUIT_SSD1306_128_64) {
@@ -271,7 +319,13 @@ void OLED_clearDisplay(int fd)
 	}
 }
 
-/* Show checker pattern */
+/*
+ * Show test pattern.
+ *
+ *  Parameters:
+ *    fd	- SPI file descriptor
+ *    type	- test pattern type (0-5)
+ */
 void OLED_testPattern(int fd, int type)
 {
 	int i;
@@ -321,7 +375,13 @@ void OLED_testPattern(int fd, int type)
 	}
 }
 
-/* Show test font */
+/*
+ * Show all characters for test font (ID=0, 5x7).
+ *
+ *  Parameters:
+ *    fd	- SPI file descriptor
+ *    start	- ASCII code of first character
+ */
 void OLED_testFont(int fd, int start)
 {
 	if (oled_type == ADAFRUIT_SSD1306_128_64) {
@@ -339,11 +399,20 @@ void OLED_testFont(int fd, int start)
 	}
 }
 
-/* Print character */
-/* x - column in pixels */
-/* row - y coordinate in bytes (pages!) */
-/* inv - 1 for inversed background */
-/* Return: x coordinate for next letter */
+/*
+ * Print character.
+ *
+ *  Parameters:
+ *    fd	- SPI file descriptor
+ *    fontid	- font handler
+ *    x		- column in pixels
+ *    row	- y coordinate in bytes (pages!)
+ *    inv	- 1 for inversed background
+ *    c		- character
+ *
+ *  Return:
+ *    x coordinate for next letter
+ */
 int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 {
 	struct fontDesc *ft;
@@ -384,11 +453,20 @@ int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 	return -1;
 }
 
-/* Print string */
-/* x - column in pixels */
-/* row - y coordinate in bytes (pages!) */
-/* inv - 1 for inversed background */
-/* Return: x coordinate for next letter */
+/*
+ * Print string.
+ *
+ *  Parameters:
+ *    fd	- SPI file descriptor
+ *    fontid	- font handler
+ *    x		- column in pixels
+ *    row	- y coordinate in bytes (pages!)
+ *    inv	- 1 for inverted background
+ *    s		- string
+ *
+ *  Return:
+ *    x coordinate for next letter
+ */
 int OLED_putString(int fd, int fontid, int x, int row, int inv,
 		   const unsigned char *s)
 {
@@ -442,7 +520,17 @@ int OLED_putString(int fd, int fontid, int x, int row, int inv,
 	return -1;
 }
 
-/* Load PSF font file (256 chars, no Unicode) and return fontid */
+/*
+ * Load PSF font file (256 chars, ASCII, no Unicode).
+ * Convert it to memory layout compatible with vertical
+ * addressing mode of SSD1306.
+ *
+ *  Parameters:
+ *    psffile	- path to PSFv1/v2 font file
+ *
+ *  Return:
+ *    Font ID (handler)
+ */
 int OLED_loadPsf(const unsigned char *psffile)
 {
 	int psfd;
@@ -519,9 +607,21 @@ int OLED_loadPsf(const unsigned char *psffile)
 	return fntcnt++;
 }
 
-/* Load font from memory (compatible with OLED vertical addresing mode) */
-/* Use this function to access fonts defined in header files */
-/* Note: does not copy memory - uses original pointer */
+/*
+ * Load font from memory (compatible with OLED vertical addresing mode).
+ * Use this function to access fonts defined in header files.
+ * Note: does not copy memory - uses original pointer.
+ *
+ *  Parameters:
+ *    width		- font width in pixels
+ *    height		- font height in pixels
+ *    cellwidth		- font box (cell) width in pixels (extra spacing)
+ *    byteheight	- font height in bytes (pages)
+ *    dataptr		- pointer to memory location with fonts images
+ *
+ *  Return:
+ *    Font ID (handler)
+ */
 int OLED_loadFont(int width, int height, int cellwidth, int byteheight,
 		  unsigned char *dataptr)
 {
@@ -542,8 +642,19 @@ int OLED_loadFont(int width, int height, int cellwidth, int byteheight,
 	return fntcnt++;
 }
 
-/* Get font screen dimensions */
-/* Returns height in bytes (pages) */
+/*
+ * Get font screen dimensions.
+ *
+ *  Parameters:
+ *    fontid	 - font handler
+ *    width	 - set to font width in pixels
+ *    height	 - set to font height in pixels
+ *    cellwidth	 - set to font box (cell) width in pixels (extra spacing)
+ *    byteheight - set to font height in bytes (pages)
+ *
+ *  Return:
+ *    Font size in bytes (pages)
+ */
 int OLED_getFontScreenSize(int fontid, int *width, int *height,
 			   int *cellwidth, int *cellheight, int *byteheight)
 {
@@ -564,7 +675,16 @@ int OLED_getFontScreenSize(int fontid, int *width, int *height,
 	return fnt[fontid].fontSizeB;
 }
 
-/* Returns pointer to font memory area and its size in bytes */
+/*
+ *  Get font memory address.
+ *
+ *  Parameters:
+ *    fontid	- font handler
+ *    bytes	- set to font memory size in bytes
+ *
+ *  Return:
+ *    Pointer to font memory area
+ */
 unsigned char *OLED_getFontMemory(int fontid, int *bytes)
 {
 	if (fontid >= fntcnt)
@@ -576,8 +696,17 @@ unsigned char *OLED_getFontMemory(int fontid, int *bytes)
 	return fnt[fontid].fontImg;
 }
 
-/* Load image directly to screen at (x, row) position */
-/* X coordinates are in pixels and Y values are in bytes (pages) */
+/*
+ * Load image directly to screen. Image is loaded from top left bit.
+ *
+ *  Parameters:
+ *    fd	 - SPI file descriptor
+ *    x		 - x coordinate (column) in pixels
+ *    row	 - y coordinate in bytes (pages)
+ *    width	 - width in pixels
+ *    byteheight - height in bytes (pages)
+ *    img	 - pointer to image location
+ */
 void OLED_putImage(int fd, int x, int row, int width, int byteheight,
 		   unsigned char *img)
 {
