@@ -145,17 +145,62 @@ int OLED_getFontScreenSize(int fontid, int *width, int *height,
 unsigned char *OLED_getFontMemory(int fontid, int *bytes);
 
 /*
- * Load image directly to screen. Image is loaded from top left bit.
+ * Load bitmap (1-bit B/W, size not bigger than screen).
+ * Convert it to memory layout compatible with vertical
+ * addressing mode of SSD1306.
  *
  *  Parameters:
- *    fd	 - SPI file descriptor
- *    x		 - x coordinate (column) in pixels
- *    row	 - y coordinate in bytes (pages)
- *    width	 - width in pixels
- *    byteheight - height in bytes (pages)
- *    img	 - pointer to image location
+ *    bmpfile   - path to BMP file
+ *
+ *  Return:
+ *    Bitmap ID (handler)
  */
-void OLED_putImage(int fd, int x, int row, int width, int byteheight,
-		   unsigned char *img);
+int OLED_loadBitmap(const unsigned char *bmpfile);
+
+/*
+ * Display image.
+ *
+ *  Parameters:
+ *    fd	- SPI file descriptor
+ *    imageid	- image ID (handler)
+ *    x		- x coordinate (column) in pixels
+ *    row	- y coordinate in bytes (pages)
+ *
+ *  Return:
+ *    x coordinate for next object
+ */
+int OLED_putImage(int fd, int imageid, int x, int row);
+
+/*
+ * Get image screen dimensions.
+ *
+ *  Parameters:
+ *    imageid	 - font handler
+ *    width	 - set to image width in pixels
+ *    height	 - set to image height in pixels
+ *    byteheight - set to image height in bytes (pages)
+ *
+ *  Return:
+ *    Image size in bytes (pages)
+ */
+int OLED_getImageScreenSize(int imageid, int *width, int *height,
+			    int *byteheight);
+
+/*
+ * Load image from memory (compatible with OLED vertical addresing mode).
+ * Use this function to access images defined in header files.
+ * Note: does not copy memory - uses original pointer.
+ *
+ *  Parameters:
+ *    width             - image width in pixels
+ *    height            - image height in pixels
+ *    dataptr           - pointer to memory location with image
+ *    maskptr           - pointer to memory location with transparency mask
+ *
+ *  Return:
+ *    Image ID (handler)
+ */
+int OLED_loadImage(int width, int height, unsigned char *dataptr,
+		   unsigned char *maskptr);
 
 #endif

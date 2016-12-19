@@ -10,6 +10,7 @@
 #define BMP_MAGIC0	'B'
 #define BMP_MAGIC1	'M'
 
+#pragma pack(push, 2)
 struct bmp_header {
 	unsigned char magic[2];
 	unsigned int filesize;
@@ -20,6 +21,7 @@ struct bmp_header {
 	unsigned short clrplanes;
 	unsigned short bpp;
 };
+#pragma pack(pop)
 
 #define BMP_MAGIC_OK(x)	((x)[0]==BMP_MAGIC0 && (x)[1]==BMP_MAGIC1)
 

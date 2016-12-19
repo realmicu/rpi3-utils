@@ -52,6 +52,7 @@
 /* ****************** */
 #define GPIO_PINS		28	/* number of Pi3 GPIO pins */
 #define MAX_FONTS		16	/* maximum fonts that can be loaded */
+#define MAX_IMAGES		256	/* maximum images that can be loaded */
 
 /* ****************** */
 /* Internal variables */
@@ -85,18 +86,18 @@ static int fntcnt;
  * Image data.
  *
  * Similar to fonts, all images get an ID when loaded and stay in memory
- * until process dies. Data is allocated dynamically though as there is
- * no hardcoded limit for number of images. Images loaded directly to
- * screen do not use mask (no read access to GDRAM).
+ * until process ends. Images loaded directly to screen do not use mask
+ * (no read access to GDRAM).
  */
 
 struct imgDesc {
 	int imgHeight, imgWidth;
-	int imgLen;
 	unsigned char *imgData;
 	unsigned char *maskData;
+	/* internals calculated for speed as they are used frequently */
+	int imgByteH, imgSizeB;
 };
-static struct imgDesc *img;
+static struct imgDesc img[MAX_IMAGES];
 static int imgcnt;
 
 /* ************************** */
@@ -186,7 +187,6 @@ int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin)
 
 			/* no predefined images */
 			imgcnt = 0;
-			img = NULL;
 		}
 	} else
 		fd = -1;
@@ -439,10 +439,10 @@ int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_V);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
 		OLED_spiWrite(fd, x);
-		OLED_spiWrite(fd, (x + ft->fontCellW - 1) & 0x7F);
+		OLED_spiWrite(fd, x + ft->fontCellW - 1);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, row);
-		OLED_spiWrite(fd, (row + ft->fontByteH - 1) & 0x07);
+		OLED_spiWrite(fd, row + ft->fontByteH - 1);
 		digitalWrite(oled_dc_pin, HIGH);
 		write(fd, cptr, ft->fontCellSz);
 		free(cptr);
@@ -697,41 +697,184 @@ unsigned char *OLED_getFontMemory(int fontid, int *bytes)
 }
 
 /*
- * Load image directly to screen. Image is loaded from top left bit.
+ * Load bitmap (1-bit B/W, size not bigger than screen).
+ * Convert it to memory layout compatible with vertical
+ * addressing mode of SSD1306.
+ *
+ *  Parameters:
+ *    bmpfile	- path to BMP file
+ *
+ *  Return:
+ *    Bitmap ID (handler)
+ */
+int OLED_loadBitmap(const unsigned char *bmpfile)
+{
+	int bfd;
+	char magic[2];
+	struct bmp_header bh;
+	struct imgDesc *im;
+	unsigned char *buf;
+	int llen, i, j;
+	int omask, obi, imask, ibi;
+
+	if (imgcnt == MAX_IMAGES)
+		return -1;
+
+	bfd = open(bmpfile, O_RDONLY);
+	if (bfd < 0)
+		return -1;
+
+	read(bfd, &magic, 2);
+	lseek(bfd, 0, SEEK_SET);
+
+	if (!BMP_MAGIC_OK(magic))
+		return -1;
+
+	read(bfd, &bh, sizeof(struct bmp_header));
+
+	if (bh.width > 128 || bh.height > 64)
+		return -1;	/* image too large */
+	if (bh.bpp != 1)
+		return -1;	/* image is not 1-bit */
+
+	im = &img[imgcnt];
+	im->imgWidth = bh.width;
+	im->imgHeight = bh.height;
+	im->imgByteH = (bh.height + 7) >> 3;
+	im->imgSizeB = im->imgByteH * im->imgWidth;
+	im->imgData = (unsigned char *)malloc(im->imgSizeB);
+	im->maskData = NULL;
+	memset(im->imgData, 0, im->imgSizeB);
+
+	lseek(bfd, bh.imgoffset, SEEK_SET);
+	llen = ((bh.width >> 3) + 3) & ~0x03;	/* lines are dword-aligned */
+	buf = (unsigned char *)malloc(llen);
+
+	/* bitmaps are oriented bottom-top */
+	for(i = im->imgHeight - 1; i >= 0; i--) {
+		read(bfd, buf, llen);
+		omask = 1 << (i & 0x07);	/* output mask */
+		obi = i >> 3;	/* output (vertical) byte index */
+		for(j = 0; j < im->imgWidth; j++) {
+			imask = 1 << (7 - (j & 0x07));	/* input mask */
+			ibi = j >> 3;	/* input (horizontal) byte index */
+			if (buf[ibi] & imask)
+				im->imgData[j * im->imgByteH + obi] |= omask;
+		}
+	}
+
+	close(bfd);
+	free(buf);
+
+	return imgcnt++;
+}
+
+/*
+ * Display image.
  *
  *  Parameters:
  *    fd	 - SPI file descriptor
+ *    imageid	 - image ID (handler)
  *    x		 - x coordinate (column) in pixels
  *    row	 - y coordinate in bytes (pages)
- *    width	 - width in pixels
- *    byteheight - height in bytes (pages)
- *    img	 - pointer to image location
+ *
+ *  Return:
+ *    x coordinate for next object
  */
-void OLED_putImage(int fd, int x, int row, int width, int byteheight,
-		   unsigned char *img)
+int OLED_putImage(int fd, int imageid, int x, int row)
 {
-	int w;
+	struct imgDesc *im;
+
+	if (imageid >= imgcnt)
+		return -1;
 
 	if (row < 0 || x < 0)
-		return;
+		return -1;
+
+	im = &img[imageid];
 
 	if (oled_type == ADAFRUIT_SSD1306_128_64) {
-		if (row + byteheight > 8)
-			return;		/* we do not clip vertically */
-		w = x + width > 128 ? 128 - x : width;
+		if (row + im->imgByteH > 8 || x + im->imgWidth > 128)
+			return -1;	/* we do not clip on-screen */
 
 		digitalWrite(oled_dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_V);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
 		OLED_spiWrite(fd, x);
-		OLED_spiWrite(fd, x + w - 1);
+		OLED_spiWrite(fd, x + im->imgWidth - 1);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, row);
-		OLED_spiWrite(fd, row + byteheight - 1);
+		OLED_spiWrite(fd, row + im->imgByteH - 1);
 		digitalWrite(oled_dc_pin, HIGH);
-		write(fd, img, w * byteheight);
+		write(fd, im->imgData, im->imgSizeB);
+
+		return (x + im->imgWidth) & 0x7F;
 	}
+
+	return -1;
+}
+
+/*
+ * Get image screen dimensions.
+ *
+ *  Parameters:
+ *    imageid	 - font handler
+ *    width	 - set to image width in pixels
+ *    height	 - set to image height in pixels
+ *    byteheight - set to image height in bytes (pages)
+ *
+ *  Return:
+ *    Image size in bytes (pages)
+ */
+int OLED_getImageScreenSize(int imageid, int *width, int *height,
+			    int *byteheight)
+{
+	if (imageid >= fntcnt)
+		return -1;
+
+	if (width)
+		*width = img[imageid].imgWidth;
+	if (height)
+		*height = img[imageid].imgHeight;
+	if (byteheight)
+		*byteheight = img[imageid].imgByteH;
+
+	return img[imageid].imgSizeB;
+}
+
+/*
+ * Load image from memory (compatible with OLED vertical addresing mode).
+ * Use this function to access images defined in header files.
+ * Note: does not copy memory - uses original pointer.
+ *
+ *  Parameters:
+ *    width		- image width in pixels
+ *    height		- image height in pixels
+ *    dataptr		- pointer to memory location with image
+ *    maskptr		- pointer to memory location with transparency mask
+ *
+ *  Return:
+ *    Image ID (handler)
+ */
+int OLED_loadImage(int width, int height, unsigned char *dataptr,
+		   unsigned char *maskptr)
+{
+	struct imgDesc *im;
+
+	if (imgcnt == MAX_IMAGES)
+		return -1;
+
+	im = &img[imgcnt];
+
+	im->imgWidth = width;
+	im->imgHeight = height;
+	im->imgByteH = (height + 7) >> 3;
+	im->imgSizeB = im->imgByteH * im->imgWidth;
+	im->imgData = dataptr;
+	im->maskData = maskptr;
+
+	return imgcnt++;
 }
 
 /* ********************* */

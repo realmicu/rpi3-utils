@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	if (!strcmp(argv[1], "--?")) {
+	if (argc > 1 && !strcmp(argv[1], "--?")) {
 		help(argv[0]);
 		exit(0);
 	}
