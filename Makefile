@@ -8,7 +8,7 @@ PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
 	power433send power433control bh1750_test env_mon ssd1306_test \
-	ssd1306_font ssd1306_psf2ch ssd1306_bmp
+	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer
 
 #################
 # General rules #
@@ -161,6 +161,18 @@ ssd1306_psf2ch:	ssd1306_psf2ch.c oled_lib.o
 
 ssd1306_bmp:	ssd1306_bmp.c oled_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(OLED_EXTRA_LIBS)
+
+###########################################
+# Remote Thermometer RF access using GPIO #
+###########################################
+
+THERMO433_EXTRA_LIBS = -lwiringPi -pthread
+
+thermo433_lib.o:	thermo433_lib.c
+	$(CC) -c -o $@ $< $(CFLAGS) -pthread
+
+thermo433sniffer:	thermo433sniffer.c thermo433_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(THERMO433_EXTRA_LIBS)
 
 ##################
 # Other programs #
