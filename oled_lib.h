@@ -2,7 +2,7 @@
 #define _OLED_LIB_H_
 
 /* OLED types */
-#define ADAFRUIT_SSD1306_128_64		1
+#define ADAFRUIT_SSD1306_128_64		0
 
 /* Default font */
 #define OLED_DEFAULT_FONT		0	/* 5x7 font */

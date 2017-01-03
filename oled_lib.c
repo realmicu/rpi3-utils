@@ -50,17 +50,47 @@
 /* ****************** */
 /* Internal constants */
 /* ****************** */
+#define OLED_DEVICES		1	/* number of supported devices */
 #define GPIO_PINS		28	/* number of Pi3 GPIO pins */
 #define MAX_FONTS		16	/* maximum fonts that can be loaded */
 #define MAX_IMAGES		256	/* maximum images that can be loaded */
+#define OLED_CHIP_SSD1306	0	/* chip is SSD1306 */
+#define OLED_CHIP_SH1106	1	/* chip is SH1106 */
 
 /* ****************** */
 /* Internal variables */
 /* ****************** */
-static int oled_type;
-static int oled_rst_pin, oled_dc_pin;
-static int memsize;		/* display memory in bytes */
+struct oledDesc {
+	int type;		/* screen type */
+	int chip;		/* chip family */
+	int memsize;		/* memory size in bytes */
+	int xsize, ysize;	/* screen dimensions in pixels */
+	void *chip_data;	/* chip-specific data */
+};
+
+struct ssd1306Desc {
+	int rst_pin;		/* BCM GPIO for reset signal */
+	int dc_pin;		/* BCM GPIO for Data/Command */
+	int byteh;		/* height in bytes (pages) */
+};
+
+static struct ssd1306Desc ssd1306Info = {
+	-1, -1, 8
+};
+
+static struct oledDesc oledInfo[OLED_DEVICES] = {
+	{
+		ADAFRUIT_SSD1306_128_64,
+		OLED_CHIP_SSD1306,
+		1024,
+		128,
+		64,
+		(void*)&ssd1306Info
+	}
+};
+
 static unsigned char *zero;	/* for display zeroing */
+static struct oledDesc *od;
 
 /*
  * Font data.
@@ -154,31 +184,34 @@ static void OLED_invMem(unsigned char *s, int len)
 int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin)
 {
 	int fd;
+	struct ssd1306Desc *sd;
 
-	oled_type = 0;
-	oled_rst_pin = -1;
-	oled_dc_pin = -1;
+	od = NULL;
+
+	if (type < 0 || type >= OLED_DEVICES)
+		return -1;
+
+	od = &oledInfo[type];		/* set global pointer */
 
 	if (type == ADAFRUIT_SSD1306_128_64) {
+
+		sd = (struct ssd1306Desc*)od->chip_data;
 
 		fd = wiringPiSPISetup(cs, SSD1306_SPI_CLK_HZ);
 
 		if (fd > 0) {
 			if (rst_pin >= 0 && rst_pin < GPIO_PINS) {
-				oled_rst_pin = rst_pin;
-				pinMode(oled_rst_pin, OUTPUT);
+				sd->rst_pin = rst_pin;
+				pinMode(sd->rst_pin, OUTPUT);
 			}
 			if (dc_pin >= 0 && dc_pin < GPIO_PINS) {
-				oled_dc_pin = dc_pin;
-				pinMode(oled_dc_pin, OUTPUT);
+				sd->dc_pin = dc_pin;
+				pinMode(sd->dc_pin, OUTPUT);
 			}
-			oled_type = type;
-
-			memsize = 1024;	/* 8 pages * 128 bytes */
 
 			/* prepare cls framebuffer */
-			zero = (unsigned char *)malloc(memsize);
-			memset(zero, 0, memsize);
+			zero = (unsigned char *)malloc(od->memsize);
+			memset(zero, 0, od->memsize);
 
 			/* load default font (id=0), size 5x7, */
 			/* width padded to 6 pixels, 1-byte high */
@@ -199,15 +232,22 @@ int OLED_initSPI(int type, int cs, int rst_pin, int dc_pin)
  */
 void OLED_powerOn(int fd)
 {
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
+	struct ssd1306Desc *sd;
 
-		digitalWrite(oled_rst_pin, HIGH);
-		delay(SSD1306_RESET_WAIT_MS);
-		digitalWrite(oled_rst_pin, LOW);
-		delay(SSD1306_RESET_WAIT_MS);
-		digitalWrite(oled_rst_pin, HIGH);
+	if (!od)
+		return;
 
-		digitalWrite(oled_dc_pin, LOW);
+	if (od->chip == OLED_CHIP_SSD1306) {
+
+		sd = (struct ssd1306Desc*)od->chip_data;
+
+		digitalWrite(sd->rst_pin, HIGH);
+		delay(SSD1306_RESET_WAIT_MS);
+		digitalWrite(sd->rst_pin, LOW);
+		delay(SSD1306_RESET_WAIT_MS);
+		digitalWrite(sd->rst_pin, HIGH);
+
+		digitalWrite(sd->dc_pin, LOW);
 
 		/* initialization sequence - see datasheet */
 		/* values that get reset to default are omitted */
@@ -283,8 +323,14 @@ void OLED_powerOn(int fd)
  */
 void OLED_powerOff(int fd)
 {
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
-		digitalWrite(oled_dc_pin, LOW);
+	struct ssd1306Desc *sd;
+
+	if (!od)
+		return;
+
+	if (od->chip == OLED_CHIP_SSD1306) {
+		sd = (struct ssd1306Desc*)od->chip_data;
+		digitalWrite(sd->dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_DISPLAY_OFF);
 	}
 }
@@ -304,18 +350,24 @@ void OLED_powerOff(int fd)
  */
 void OLED_clearDisplay(int fd)
 {
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
-		digitalWrite(oled_dc_pin, LOW);
+	struct ssd1306Desc *sd;
+
+	if (!od)
+		return;
+
+	if (od->chip == OLED_CHIP_SSD1306) {
+		sd = (struct ssd1306Desc*)od->chip_data;
+		digitalWrite(sd->dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_H);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
 		OLED_spiWrite(fd, 0);
-		OLED_spiWrite(fd, 127);
+		OLED_spiWrite(fd, od->xsize - 1);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, 0);
-		OLED_spiWrite(fd, 7);
-		digitalWrite(oled_dc_pin, HIGH);
-		write(fd, zero, memsize);
+		OLED_spiWrite(fd, sd->byteh - 1);
+		digitalWrite(sd->dc_pin, HIGH);
+		write(fd, zero, od->memsize);
 	}
 }
 
@@ -330,46 +382,52 @@ void OLED_testPattern(int fd, int type)
 {
 	int i;
 	unsigned char *pat;
- 
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
+	struct ssd1306Desc *sd;
 
-		pat = (unsigned char *)malloc(memsize);
+	if (!od)
+		return;
+
+	if (od->chip == OLED_CHIP_SSD1306) {
+
+		sd = (struct ssd1306Desc*)od->chip_data;
+
+		pat = (unsigned char *)malloc(od->memsize);
 
 		if (!type)
 			/* all bits on */
-			memset(pat, 0xFF, memsize);
+			memset(pat, 0xFF, od->memsize);
 		else if (type == 1)
 			/* 1x1 checker pattern */
-			for(i=0; i < memsize; i++)
+			for(i=0; i < od->memsize; i++)
 				pat[i] = (i & 0x1) ? 0xAA : 0x55;
 		else if (type == 2)
 			/* 2x2 checker pattern */
-			for(i=0; i < memsize; i++)
+			for(i=0; i < od->memsize; i++)
 				pat[i] = (i & 0x2) ? 0xCC : 0x33;
 		else if (type == 3)
 			/* 4x4 checker pattern */
-			for(i=0; i < memsize; i++)
+			for(i=0; i < od->memsize; i++)
 				pat[i] = (i & 0x4) ? 0xF0 : 0x0F;
 		else if (type == 4)
 			/* 4-pixel-wide vertical stripes */
-			for(i=0; i < memsize; i++)
+			for(i=0; i < od->memsize; i++)
 				pat[i] = (i & 0x4) ? 0xFF : 0x00;
 		else if (type == 5)
 			/* 4-pixel-high horizontal stripes */
-			for(i=0; i < memsize; i++)
+			for(i=0; i < od->memsize; i++)
 				pat[i] = 0x0F;
 
-		digitalWrite(oled_dc_pin, LOW);
+		digitalWrite(sd->dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_H);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
 		OLED_spiWrite(fd, 0);
-		OLED_spiWrite(fd, 127);
+		OLED_spiWrite(fd, od->xsize - 1);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, 0);
-		OLED_spiWrite(fd, 7);
-		digitalWrite(oled_dc_pin, HIGH);
-		write(fd, pat, memsize);
+		OLED_spiWrite(fd, sd->byteh - 1);
+		digitalWrite(sd->dc_pin, HIGH);
+		write(fd, pat, od->memsize);
 
 		free(pat);
 	}
@@ -384,18 +442,24 @@ void OLED_testPattern(int fd, int type)
  */
 void OLED_testFont(int fd, int start)
 {
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
-		digitalWrite(oled_dc_pin, LOW);
+	struct ssd1306Desc *sd;
+
+	if (!od)
+		return;
+
+	if (od->chip == OLED_CHIP_SSD1306) {
+		sd = (struct ssd1306Desc*)od->chip_data;
+		digitalWrite(sd->dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_H);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
 		OLED_spiWrite(fd, 0);
-		OLED_spiWrite(fd, 127);
+		OLED_spiWrite(fd, od->xsize - 1);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, 0);
-		OLED_spiWrite(fd, 7);
-		digitalWrite(oled_dc_pin, HIGH);
-		write(fd, &font[start * 5], memsize);
+		OLED_spiWrite(fd, sd->byteh - 1);
+		digitalWrite(sd->dc_pin, HIGH);
+		write(fd, &font[start * 5], od->memsize);
 	}
 }
 
@@ -417,16 +481,21 @@ int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 {
 	struct fontDesc *ft;
 	unsigned char *tptr, *cptr;
+	struct ssd1306Desc *sd;
+
+	if (!od)
+		return -1;
 
 	if (fontid >= fntcnt)
 		return -1;
 
 	ft = &fnt[fontid];
 
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
+	if (od->chip == OLED_CHIP_SSD1306) {
+		sd = (struct ssd1306Desc*)od->chip_data;
 		/* we do not clip on-screen */
-		if (row < 0 || row + ft->fontByteH > 8 ||
-		    x < 0 || x + ft->fontCellW > 128)
+		if (row < 0 || row + ft->fontByteH > sd->byteh ||
+		    x < 0 || x + ft->fontCellW > od->xsize)
 			return -1;
 		tptr = ft->fontImg + c * ft->fontSizeB;
 		cptr = (unsigned char *)malloc(ft->fontCellSz);
@@ -434,7 +503,7 @@ int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 		memcpy(cptr + ft->fontLJustB, tptr, ft->fontSizeB);
 		if (inv)
 			OLED_invMem(cptr, ft->fontCellSz);
-		digitalWrite(oled_dc_pin, LOW);
+		digitalWrite(sd->dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_V);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
@@ -443,7 +512,7 @@ int OLED_putChar(int fd, int fontid, int x, int row, int inv, char c)
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, row);
 		OLED_spiWrite(fd, row + ft->fontByteH - 1);
-		digitalWrite(oled_dc_pin, HIGH);
+		digitalWrite(sd->dc_pin, HIGH);
 		write(fd, cptr, ft->fontCellSz);
 		free(cptr);
 
@@ -473,6 +542,10 @@ int OLED_putString(int fd, int fontid, int x, int row, int inv,
 	int i, len, memlen, memw;
 	struct fontDesc *ft;
 	unsigned char *tptr, *cptr;
+	struct ssd1306Desc *sd;
+
+	if (!od)
+		return -1;
 
 	if (fontid >= fntcnt)
 		return -1;
@@ -485,11 +558,12 @@ int OLED_putString(int fd, int fontid, int x, int row, int inv,
 	if (row < 0 || x < 0)
 		return -1;
 
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
-		if (row + ft->fontByteH > 8)
+	if (od->chip == OLED_CHIP_SSD1306) {
+		sd = (struct ssd1306Desc*)od->chip_data;
+		if (row + ft->fontByteH > sd->byteh)
 			return -1;	/* we do not clip vertically */
-		if (x + len * ft->fontCellW > 128)
-			len = (128 - x) / ft->fontCellW;
+		if (x + len * ft->fontCellW > od->xsize)
+			len = (od->xsize - x) / ft->fontCellW;
 		memlen = len * ft->fontCellSz;
 		memw = len * ft->fontCellW;
 		cptr = (unsigned char *)malloc(memlen);
@@ -501,20 +575,22 @@ int OLED_putString(int fd, int fontid, int x, int row, int inv,
 		}
 		if (inv)
 			OLED_invMem(cptr, memlen);
-		digitalWrite(oled_dc_pin, LOW);
+		digitalWrite(sd->dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_V);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
 		OLED_spiWrite(fd, x);
-		OLED_spiWrite(fd, (x + memw - 1) & 0x7F);
+		OLED_spiWrite(fd, x + memw < od->xsize ?
+			      x + memw - 1 : od->xsize - 1);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, row);
-		OLED_spiWrite(fd, (row + ft->fontByteH - 1) & 0x07);
-		digitalWrite(oled_dc_pin, HIGH);
+		OLED_spiWrite(fd, row + ft->fontByteH < sd->byteh ?
+			      row + ft->fontByteH - 1 : sd->byteh - 1);
+		digitalWrite(sd->dc_pin, HIGH);
 		write(fd, cptr, memlen);
 		free(cptr);
 
-		return (x + memw) & 0x7F;
+		return x + memw < od->xsize ? x + memw : od->xsize;
 	}
 
 	return -1;
@@ -720,6 +796,9 @@ int OLED_loadBitmap(const unsigned char *bmpfile)
 	if (imgcnt == MAX_IMAGES)
 		return -1;
 
+	if (!od)
+		return -1;
+
 	bfd = open(bmpfile, O_RDONLY);
 	if (bfd < 0)
 		return -1;
@@ -732,7 +811,7 @@ int OLED_loadBitmap(const unsigned char *bmpfile)
 
 	read(bfd, &bh, sizeof(struct bmp_header));
 
-	if (bh.width > 128 || bh.height > 64)
+	if (bh.width > od->xsize || bh.height > od->ysize)
 		return -1;	/* image too large */
 	if (bh.bpp != 1)
 		return -1;	/* image is not 1-bit */
@@ -784,6 +863,10 @@ int OLED_loadBitmap(const unsigned char *bmpfile)
 int OLED_putImage(int fd, int imageid, int x, int row)
 {
 	struct imgDesc *im;
+	struct ssd1306Desc *sd;
+
+	if (!od)
+		return -1;
 
 	if (imageid >= imgcnt)
 		return -1;
@@ -793,11 +876,13 @@ int OLED_putImage(int fd, int imageid, int x, int row)
 
 	im = &img[imageid];
 
-	if (oled_type == ADAFRUIT_SSD1306_128_64) {
-		if (row + im->imgByteH > 8 || x + im->imgWidth > 128)
+	if (od->chip == OLED_CHIP_SSD1306) {
+		sd = (struct ssd1306Desc*)od->chip_data;
+		if (row + im->imgByteH > sd->byteh ||
+		    x + im->imgWidth > od->xsize)
 			return -1;	/* we do not clip on-screen */
 
-		digitalWrite(oled_dc_pin, LOW);
+		digitalWrite(sd->dc_pin, LOW);
 		OLED_spiWrite(fd, SSD1306_CMD_ADDR_MODE);
 		OLED_spiWrite(fd, SSD1306_ARG_ADDR_MODE_V);
 		OLED_spiWrite(fd, SSD1306_CMD_VH_COL_RANGE);
@@ -806,10 +891,11 @@ int OLED_putImage(int fd, int imageid, int x, int row)
 		OLED_spiWrite(fd, SSD1306_CMD_VH_PAGE_RANGE);
 		OLED_spiWrite(fd, row);
 		OLED_spiWrite(fd, row + im->imgByteH - 1);
-		digitalWrite(oled_dc_pin, HIGH);
+		digitalWrite(sd->dc_pin, HIGH);
 		write(fd, im->imgData, im->imgSizeB);
 
-		return (x + im->imgWidth) & 0x7F;
+		return x + im->imgWidth < od->xsize ?
+		       x + im->imgWidth : od->xsize;
 	}
 
 	return -1;
