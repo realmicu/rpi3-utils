@@ -45,10 +45,10 @@ struct hyundaiPulseDesc {
 
 /* timing data for devices */
 static struct hyundaiPulseDesc hyuwsPulse = {
-	8000, 7200, 9000,
-	 500, 400, 600,
-	2000, 1800, 2600,
-	4000, 3600, 4400
+	8800, 7200, 9200,
+	 500, 380, 700,
+	2000, 1750, 2250,
+	4000, 3800, 4400
 };
 
 static struct thermoDesc tDevInfo[THERMO433_DEVICES] = {
