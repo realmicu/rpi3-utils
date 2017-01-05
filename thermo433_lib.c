@@ -251,7 +251,7 @@ int Thermo433_decodeValues(unsigned long long val, int *ch, int *bat,
 			*humid = v;	/* add 100 to get real value */
 		}
 		if (tdir) {
-			v = (val & 0x6000000L) >> 31;
+			v = (val & 0x6000000L) >> 25;
 			if (v == 3)
 				*tdir = THERMO433_TEMP_TREND_INVALID;
 			else
