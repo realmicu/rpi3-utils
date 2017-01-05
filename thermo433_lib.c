@@ -46,9 +46,9 @@ struct hyundaiPulseDesc {
 /* timing data for devices */
 static struct hyundaiPulseDesc hyuwsPulse = {
 	8800, 7200, 9200,
-	 500, 380, 700,
-	2000, 1750, 2250,
-	4000, 3800, 4400
+	 500, 360, 720,
+	2000, 1740, 2280,
+	4000, 3720, 4400
 };
 
 static struct thermoDesc tDevInfo[THERMO433_DEVICES] = {
@@ -124,6 +124,28 @@ int Thermo433_init(int tx_gpio, int rx_gpio, int type)
 	return 0;
 }
 
+/* Verify parity bits for code */
+/* 0 (false) if code is corrupted by means of parity */
+static int Thermo433_checkParity(unsigned long long val)
+{
+	unsigned long long tmpval, ec, oc, ep, op;
+	int i;
+
+	oc = 0;
+	ec = 0;
+	/* parity is NOT XOR */
+	op = 1 - ((val >> 3) & 1);
+	ep = 1 - ((val >> 2) & 1);
+	tmpval = val >> 4;
+	for (i = 0; i < td->bits - 4; i++) {
+		ec ^= tmpval & 1;
+		tmpval >>= 1;
+		oc ^= tmpval & 1;
+		tmpval >>= 1;
+	}
+	return (oc == op && ec == ep);
+}
+
 /* Retrieve code once, exit with 0 immediately if not available */
 /* NOTE: Code is not validated against CRC etc. */
 unsigned long long Thermo433_getAnyCode(void)
@@ -143,11 +165,19 @@ unsigned long long Thermo433_getAnyCode(void)
 	code = 0;
 	return tmpcode;
 }
-/* Retrieve code once, exit with 0 immediately if not available */
-/* NOTE: Code should be validated, but it's not for now */
+/* Retrieve code once, exit with 0 immediately if not available or bad */
+/* Code parity is validated */
 unsigned long long Thermo433_getCode(void)
 {
-	return Thermo433_getAnyCode();
+	unsigned long long tmpcode;
+
+	tmpcode = Thermo433_getAnyCode();
+
+	if (tmpcode)
+		if (!Thermo433_checkParity(tmpcode))
+			tmpcode = 0;
+
+	return tmpcode;
 }
 
 /* Wait for code and return only when one is available */
@@ -166,22 +196,31 @@ unsigned long long Thermo433_waitAnyCode(void)
 }
 
 /* Wait for code and return only when one is available */
-/* NOTE: Code should be validated, but it's not for now */
+/* Code parity is validated */
 unsigned long long Thermo433_waitCode(void)
 {
-	return Thermo433_waitAnyCode();
+	unsigned long long tmpcode;
+
+	tmpcode = Thermo433_waitAnyCode();
+
+	if (tmpcode)
+		if (!Thermo433_checkParity(tmpcode))
+			tmpcode = 0;
+
+	return tmpcode;
 }
 
 /* Decode RF data */
-void Thermo433_decodeValues(unsigned long long val, int *ch, int *bat,
-			    int *temp, int *humid)
+/* Return 0 if not supported / checksum is wrong */
+int Thermo433_decodeValues(unsigned long long val, int *ch, int *bat,
+			   int *temp, int *humid, int *tdir)
 {
 	int i, v;
 	unsigned long long mask;
 	
 	if (td->type == THERMO433_DEVICE_HYUWSSENZOR77TH) {
 		if (ch)
-			*ch = 1;	/* temporarily set channel to 1 */
+			*ch = (val & 0xc0000000L) >> 30;
 		if (bat)
 			*bat = 1;	/* temporarily battery is OK */
 		if (temp) {
@@ -211,13 +250,23 @@ void Thermo433_decodeValues(unsigned long long val, int *ch, int *bat,
 			v |= ~0xff;
 			*humid = v;	/* add 100 to get real value */
 		}
+		if (tdir) {
+			v = (val & 0x6000000L) >> 31;
+			if (v == 3)
+				*tdir = THERMO433_TEMP_TREND_INVALID;
+			else
+				*tdir = v;
+		}
+		return Thermo433_checkParity(val);
 	}
+	return 0;	
 }
+
 /* Read channel, battery status, temperature and humidity */
-void Thermo433_waitValues(int *ch, int *bat, int *temp, int *humid)
+void Thermo433_waitValues(int *ch, int *bat, int *temp, int *humid, int *tdir)
 {
-	Thermo433_decodeValues(Thermo433_waitCode(),
-			       ch, bat, temp, humid);
+	while (!Thermo433_decodeValues(Thermo433_waitCode(), ch, bat,
+				       temp, humid, tdir));
 }
 
 /* Classify pulse type based on length in microseconds */
