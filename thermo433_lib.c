@@ -126,6 +126,8 @@ int Thermo433_init(int tx_gpio, int rx_gpio, int type)
 
 /* Verify parity bits for code */
 /* 0 (false) if code is corrupted by means of parity */
+/* NOTE: for now it is unused as checksum algorithm is unknown */
+/*
 static int Thermo433_checkParity(unsigned long long val)
 {
 	unsigned long long tmpval, ec, oc, ep, op;
@@ -133,7 +135,7 @@ static int Thermo433_checkParity(unsigned long long val)
 
 	oc = 0;
 	ec = 0;
-	/* parity is NOT XOR */
+	*/ /* parity is NOT XOR */ /*
 	op = 1 - ((val >> 3) & 1);
 	ep = 1 - ((val >> 2) & 1);
 	tmpval = val >> 4;
@@ -144,10 +146,10 @@ static int Thermo433_checkParity(unsigned long long val)
 		tmpval >>= 1;
 	}
 	return (oc == op && ec == ep);
-}
+} */
 
 /* Retrieve code once, exit with 0 immediately if not available */
-/* NOTE: Code is not validated against CRC etc. */
+/* Code is not validated against CRC etc. */
 unsigned long long Thermo433_getAnyCode(void)
 {
 	unsigned long long tmpcode;
@@ -166,22 +168,14 @@ unsigned long long Thermo433_getAnyCode(void)
 	return tmpcode;
 }
 /* Retrieve code once, exit with 0 immediately if not available or bad */
-/* Code parity is validated */
+/* NOTE: code checksum should be validated but it is not */
 unsigned long long Thermo433_getCode(void)
 {
-	unsigned long long tmpcode;
-
-	tmpcode = Thermo433_getAnyCode();
-
-	if (tmpcode)
-		if (!Thermo433_checkParity(tmpcode))
-			tmpcode = 0;
-
-	return tmpcode;
+	return Thermo433_getAnyCode();
 }
 
-/* Wait for code and return only when one is available */
-/* NOTE: Code is not validated against CRC etc. */
+/* Wait for any code and return only when one is available */
+/* Code is not validated against CRC etc. */
 unsigned long long Thermo433_waitAnyCode(void)
 {
 	unsigned long long tmpcode;
@@ -196,22 +190,15 @@ unsigned long long Thermo433_waitAnyCode(void)
 }
 
 /* Wait for code and return only when one is available */
-/* Code parity is validated */
+/* NOTE: code checksum should be validated but it is not */
 unsigned long long Thermo433_waitCode(void)
 {
-	unsigned long long tmpcode;
-
-	tmpcode = Thermo433_waitAnyCode();
-
-	if (tmpcode)
-		if (!Thermo433_checkParity(tmpcode))
-			tmpcode = 0;
-
-	return tmpcode;
+	return Thermo433_waitAnyCode();
 }
 
 /* Decode RF data */
-/* Return 0 if not supported / checksum is wrong */
+/* Return 0 if not supported */
+/* NOTE: code checksum should be validated but it is not */
 int Thermo433_decodeValues(unsigned long long val, int *ch, int *bat,
 			   int *temp, int *humid, int *tdir)
 {
@@ -257,16 +244,16 @@ int Thermo433_decodeValues(unsigned long long val, int *ch, int *bat,
 			else
 				*tdir = v;
 		}
-		return Thermo433_checkParity(val);
+		return 1;
 	}
-	return 0;	
+	return 0;
 }
 
 /* Read channel, battery status, temperature and humidity */
 void Thermo433_waitValues(int *ch, int *bat, int *temp, int *humid, int *tdir)
 {
-	while (!Thermo433_decodeValues(Thermo433_waitCode(), ch, bat,
-				       temp, humid, tdir));
+	Thermo433_decodeValues(Thermo433_waitCode(), ch, bat,
+			       temp, humid, tdir);
 }
 
 /* Classify pulse type based on length in microseconds */
