@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
 	int gpio;
 	unsigned long long code;
 	char bincode[THERMO_BITS + 9], tstring[25];
-	int temp, humid, ch, bat, tdir, xorok;
+	int temp, humid, ch, tdir;
 	char trend[3] = { '_', '/', '\\' };
 
 #ifdef THERMO433_INCLUDE_TIMING_STATS
@@ -199,13 +199,11 @@ int main(int argc, char *argv[])
 
 		getTimestamp(tstring);
 		convertBin36(code, bincode);
-		xorok = Thermo433_decodeValues(code, &ch, &bat,
-			&temp, &humid, &tdir);
+		Thermo433_decodeValues(code, &ch, NULL, &temp, &humid, &tdir);
 		/* NOTE: when below is combined into one line, segfault! */
 		printf("%s  code = 0x%09llX , ", tstring, code);
-		printf("%s , %1d , T: %+.1lf C %c , H: %d %% , ", bincode, ch,
+		printf("%s , %1d , T: %+.1lf C %c , H: %d %%\n", bincode, ch,
 		       temp * 0.1, tdir < 0 ? '!' : trend[tdir], humid + 100);
-		printf("%s %c\n", bat ? "B" : "b", xorok ? 'C' : 'e');
 	
 #ifdef THERMO433_INCLUDE_TIMING_STATS
 		/* statistics */	
