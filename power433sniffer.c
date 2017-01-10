@@ -20,7 +20,11 @@
 
 #ifdef POWER433_INCLUDE_TIMING_STATS
 #include <signal.h>
-static volatile int gotbrk;
+static unsigned long ncodes, nshorts, nlongs;
+static unsigned long tsync_sum, tlong_sum, tshort_sum;
+static unsigned int tsync_min, tsync_avg, tsync_max;
+static unsigned int tlong_min, tlong_avg, tlong_max;
+static unsigned int tshort_min, tshort_avg, tshort_max;
 #endif
 
 /* Show help */
@@ -112,7 +116,26 @@ int changeSched(void)
 /* Intercept TERM and INT signals */
 void signalQuit(int sig)
 {
-	gotbrk = 1;
+	if (ncodes && nshorts && nlongs) {
+		tsync_avg = tsync_sum / ncodes;
+		tshort_avg = tshort_sum / nshorts;
+		tlong_avg = tlong_sum / nlongs;
+		printf("\nSync time (min/avg/max): %d/%d/%d microseconds\n",
+		       tsync_min, tsync_avg, tsync_max);
+		printf("Short time (min/avg/max): %d/%d/%d microseconds\n",
+		       tshort_min, tshort_avg, tshort_max);
+		printf("Long time (min/avg/max): %d/%d/%d microseconds\n",
+		       tlong_min, tlong_avg, tlong_max);
+		printf("Average short + long time: %d microseconds\n",
+		       tshort_avg + tlong_avg);
+		printf("Average long / short ratio: %.3lf\n",
+		       (double)tlong_avg / tshort_avg);
+		printf("Average sync / short ratio: %.3lf\n",
+		       (double)tsync_avg / tshort_avg);
+	} else if (!ncodes)
+		puts("\nNo codes received - timing statistics unavailable.");
+
+	exit(0);
 }
 #endif
 
@@ -129,14 +152,8 @@ int main(int argc, char *argv[])
 
 #ifdef POWER433_INCLUDE_TIMING_STATS
 	struct sigaction sa;
-	int i;
 	unsigned long stat_sync;                 /* for statistic purposes */
 	unsigned long stat_pbuf[POWER433_PULSES];	
-	unsigned long ncodes, nshorts, nlongs;
-	unsigned long tsync_sum, tlong_sum, tshort_sum;	
-	unsigned int tsync_min, tsync_avg, tsync_max;
-	unsigned int tlong_min, tlong_avg, tlong_max;
-	unsigned int tshort_min, tshort_avg, tshort_max;
 #endif
 
 	/* show help */
@@ -174,7 +191,6 @@ int main(int argc, char *argv[])
 
 #ifdef POWER433_INCLUDE_TIMING_STATS
 	/* install CRTL+C to display stats at the end */
-	gotbrk = 0;
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = &signalQuit;
 	sigaction(SIGTERM, &sa, NULL);
@@ -197,15 +213,7 @@ int main(int argc, char *argv[])
 
 	/* main loop - never ends, send signal to exit */
 	for(;;) {
-#ifdef POWER433_INCLUDE_TIMING_STATS
-		if (gotbrk)
-			break;
-	 	code = Power433_getCode();
-		if (!code)
-			continue;
-#else
 		code = Power433_waitCode();
-#endif
 
 #ifdef POWER433_INCLUDE_TIMING_STATS
 		Power433_getTimingStats(&stat_sync, stat_pbuf);
@@ -235,26 +243,4 @@ int main(int argc, char *argv[])
 		ncodes++;
 #endif
 	}
-
-#ifdef POWER433_INCLUDE_TIMING_STATS
-	if (gotbrk) 
-		if (ncodes && nshorts && nlongs) {
-			tsync_avg = tsync_sum / ncodes;
-			tshort_avg = tshort_sum / nshorts;
-			tlong_avg = tlong_sum / nlongs;
-			printf("\nSync time (min/avg/max): %d/%d/%d microseconds\n",
-			       tsync_min, tsync_avg, tsync_max);
-			printf("Short time (min/avg/max): %d/%d/%d microseconds\n",
-			       tshort_min, tshort_avg, tshort_max);
-			printf("Long time (min/avg/max): %d/%d/%d microseconds\n",
-			       tlong_min, tlong_avg, tlong_max);
-			printf("Average short + long time: %d microseconds\n",
-			       tshort_avg + tlong_avg);
-			printf("Average long / short ratio: %.3lf\n",
-			       (double)tlong_avg / tshort_avg);
-			printf("Average sync / short ratio: %.3lf\n",
-			       (double)tsync_avg / tshort_avg);
-		} else if (!ncodes)
-			puts("\nNo codes received - timing statistics unavailable.");
-#endif
 }
