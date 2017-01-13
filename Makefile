@@ -8,7 +8,8 @@ PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
 	power433send power433control bh1750_test env_mon ssd1306_test \
-	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer
+	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer \
+	radio433test
 
 #################
 # General rules #
@@ -173,6 +174,18 @@ thermo433_lib.o:	thermo433_lib.c
 
 thermo433sniffer:	thermo433sniffer.c thermo433_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(THERMO433_EXTRA_LIBS)
+
+##################################
+# Universal RF access using GPIO #
+##################################
+
+RADIO433_EXTRA_LIBS = -lwiringPi -pthread
+
+radio433_lib.o:	radio433_lib.c radio433_lib.h
+	$(CC) -c -o $@ $< $(CFLAGS) $(RADIO433_EXTRA_LIBS)
+
+radio433test:	radio433test.c radio433_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
 
 ##################
 # Other programs #
