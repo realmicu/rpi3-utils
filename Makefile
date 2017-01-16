@@ -184,7 +184,10 @@ RADIO433_EXTRA_LIBS = -lwiringPi -pthread
 radio433_lib.o:	radio433_lib.c radio433_lib.h
 	$(CC) -c -o $@ $< $(CFLAGS) $(RADIO433_EXTRA_LIBS)
 
-radio433sniffer:	radio433sniffer.c radio433_lib.o
+radio433_dev.o:	radio433_dev.c radio433_dev.h
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+radio433sniffer:	radio433sniffer.c radio433_lib.o radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
 
 ##################

@@ -14,6 +14,7 @@
 #include <wiringPi.h>
 
 #include "radio433_lib.h"
+#include "radio433_dev.h"
 
 #define OWNER_UID	500
 #define OWNER_GID	500
@@ -67,6 +68,10 @@ int main(int argc, char *argv[])
 	unsigned long long code;
 	int gpio, type, bits;
 	char *stype[] = { "PWR", "THM" };
+	int sysid, devid, btn;
+	int ch, batlow, tdir, humid;
+	double temp;
+	char trend[3] = { '_', '/', '\\' };
 
 	/* show help */
 	if (argc < 2) {
@@ -108,7 +113,25 @@ int main(int argc, char *argv[])
 		printf("%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
 		       tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
 		       tl->tm_sec, ts.tv_usec / 1000);
-		printf("  %s len = %d , code = 0x%0*llX\n", stype[type], bits, bits >> 2,
-		       code);
+		printf("  %s len = %d , code = 0x%0*llX", stype[type], bits,
+		       bits >> 2, code);
+		if (type == RADIO433_DEVICE_KEMOTURZ1226) {
+			if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))
+				printf(" , %d : %s%s%s%s%s : %s\n", sysid,
+				       devid & POWER433_DEVICE_A ? "A" : "",
+				       devid & POWER433_DEVICE_B ? "B" : "",
+				       devid & POWER433_DEVICE_C ? "C" : "",
+				       devid & POWER433_DEVICE_D ? "D" : "",
+				       devid & POWER433_DEVICE_E ? "E" : "",
+				       btn ? "ON" : "OFF");
+		}
+		else if (type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
+			if (Radio433_thmGetData(code, &sysid, &devid, &ch,
+						&batlow, &tdir, &temp, &humid))
+				printf(" , %1d , T: %+.1lf C %c , H: %d %%\n",
+				       ch, temp, tdir < 0 ? '!' : trend[tdir],
+				       humid);
+
+		}
 	}
 }
