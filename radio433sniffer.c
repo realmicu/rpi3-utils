@@ -17,31 +17,16 @@
 
 #define OWNER_UID	500
 #define OWNER_GID	500
-#define RX_GPIO		21
 
 #include <signal.h>
 
 /* Show help */
-/*
 void help(char *progname)
 {
 	printf("Usage:\n\t%s {gpio}\n\n", progname);
 	puts("Where:");
 	puts("\tgpio\t - GPIO pin with external RF receiver data (mandatory)");
 }
-
-void getTimestamp(char *s)
-{
-	struct timeval t;
-	struct tm *tl;
-
-	gettimeofday(&t, NULL);
-	tl = localtime(&t.tv_sec);
-	snprintf(s, 24, "%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
-		 tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
-		 tl->tm_sec, t.tv_usec / 1000);
-}
-*/
 
 /* drop super-user privileges */
 int dropRootPriv(int newuid, int newgid)
@@ -77,11 +62,26 @@ void signalQuit(int sig)
 
 int main(int argc, char *argv[])
 {
+	struct timeval ts;
+	struct tm *tl;
+	unsigned long long code;
+	int gpio, type, bits;
+	char *stype[] = { "PWR", "THM" };
+
+	/* show help */
+	if (argc < 2) {
+		help(argv[0]);
+		exit(0);
+	}
+
+	/* get parameters */
+	sscanf(argv[1], "%d", &gpio);
+
 	/* initialize WiringPi library - use BCM GPIO numbers */
 	wiringPiSetupGpio();
 
 	/* no transmission, only read */
-	Radio433_init(-1, RX_GPIO);
+	Radio433_init(-1, gpio);
 
 	/* change scheduling priority */
 	if (changeSched()) {
@@ -97,14 +97,18 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
+	/* info */
+	printf("Starting to capture RF codes from receiver connected to GPIO pin %d ...\n",
+	       gpio);
+
 	/* function loop - never ends, send signal to exit */
-
-	/* tempTBufDebug() should be run with analyzer thread
-	   DISABLED in radio433_lib.c code (comment out
-	   pthread_create()) */
-	/* Radio433_tempTBufDebug(); */
-
-	/* tempCBufDebug() should be run with analyzer thread
-	   ENABLED in radio433_lib.c code (default config) */
-	Radio433_tempCBufDebug();
+	for(;;) {
+		code = Radio433_getCode(&ts, &type, &bits);
+		tl = localtime(&ts.tv_sec);
+		printf("%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
+		       tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
+		       tl->tm_sec, ts.tv_usec / 1000);
+		printf("  %s len = %d , code = 0x%0*llX\n", stype[type], bits, bits >> 2,
+		       code);
+	}
 }

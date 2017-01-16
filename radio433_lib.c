@@ -16,10 +16,10 @@
  *   - woken by ISR via 'timingready' semaphore
  *   - performs packet classification of data in ring buffer
  *   - if valid packet, raise 'codeready' semaphore
- * User functions that waits for code (Radio433_waitForCode() family)
+ * User functions that waits for raw code (Radio433_getCode() family)
  *   - sleeps waiting for 'codeready' semaphore
  *   - determine code type and return raw code value
- * User function that decodes information (Radio433_decodeValue())
+ * External user function that decodes information
  *   - based on code type, retrieve information (command, temp/humid etc.)
  *
  */
@@ -44,11 +44,11 @@
 #define RADIO433_CODING_HIGHLOW	0
 #define RADIO433_CODING_LOWVAR	1
 
-/* noise detection */
-#define RADIO433_MAX_NOISE_TIME	99	/* noise time in us */
-
 /* ring buffer size for timings */
 #define RADIO433_RING_BUFFER_ENTRIES	32
+
+/* noise detection - smaller spikes will not affect pulse recording */
+#define RADIO433_MAX_NOISE_TIME		105	/* noise time in us */
 
 /* device info structures */
 struct deviceDesc {
@@ -121,7 +121,7 @@ static struct deviceDesc tDevInfo[RADIO433_DEVICES] = {
 	{ RADIO433_DEVICE_HYUWSSENZOR77TH,
 	  RADIO433_CODING_LOWVAR,
 	  36,
-	  32,
+	  33,
 	  4,
 	  (void*)&hyuwsPulse
 	}
@@ -134,11 +134,13 @@ static struct deviceDesc tDevInfo[RADIO433_DEVICES] = {
  */
 /* (volatile keeps selected variables in memory for interrupts) */
 struct timingBuf {
+	struct timeval timestamp;
 	int pulses;
 	unsigned long synctime;
 	unsigned long *timbuf;
 } tbuf[RADIO433_RING_BUFFER_ENTRIES];
 struct codeBuf {
+	struct timeval timestamp;
 	int type;
 	int bits;
 	unsigned long long code;
@@ -273,57 +275,23 @@ int Radio433_init(int tx_gpio, int rx_gpio)
 	return 0;
 }
 
-#ifdef RADIO433_DEBUG
-/* Dump of timing ring buffer */
-void Radio433_tempTBufDebug(void)
+/* Get code */
+unsigned long long Radio433_getCode(struct timeval *ts,
+				    int *type, int *bits)
 {
-	int i, j;
-	puts("****************************************");
-	printf("synctmin = %d\n", synctmin);
-	printf("synctmax = %d\n", synctmax);
-	printf("npulsemin = %d\n", npulsemin);
-	printf("npulsemax = %d\n", npulsemax);
-	printf("pulsetmin = %d\n", pulsetmin);
-	printf("pulsetmax = %d\n", pulsetmax);
-	printf("codetmin = %d\n", codetmin);
-	printf("codetmax = %d\n",codetmax);
-	puts("****************************************");
-	for(;;) {
-		sem_wait(&timingready);
-		for(i = 0; i < RADIO433_RING_BUFFER_ENTRIES; i++) {
-			if (twi == i)
-				printf("==> ");
-			else
-				printf("    ");
-			printf("%2d: [ %d ] ( %lu ),", i, tbuf[i].pulses,
-			       tbuf[i].synctime);
-			for(j = 0; j < tbuf[i].pulses; j++)
-				printf("%lu,", tbuf[i].timbuf[j]);
-			puts("\n");
-		}
-	}
-}
+	struct codeBuf *cb;
 
-/* Dump of code ring buffer */
-void Radio433_tempCBufDebug(void)
-{
-	int i;
-	char *type[] = { "PWR", "THM" };
-	puts("************* Code Buffer **************");
-	for(;;) {
-		sem_wait(&codeready);
-		for(i = 0; i < RADIO433_RING_BUFFER_ENTRIES; i++) {
-			if (cwi == i)
-				printf("==> ");
-			else
-				printf("    ");
-			printf("%2d: < %s > [ %d ] 0x%016llX\n", i,
-			       type[cbuf[i].type], cbuf[i].bits, cbuf[i].code);
-		}
-		puts("");
-	}
+	sem_wait(&codeready);
+	cb = &cbuf[cri];
+	if (ts)
+		memcpy(ts, &cb->timestamp, sizeof(struct timeval));
+	if (type)
+		*type = cb->type;
+	if (bits)
+		*bits = cb->bits;
+	cri = (cri + 1) % RADIO433_RING_BUFFER_ENTRIES;
+	return cb->code;
 }
-#endif
 
 /*
  * *********************
@@ -447,6 +415,8 @@ static void *codeAnalyzerThread(void *arg)
 			cb->type = dmax;
 			cb->bits = tDevInfo[dmax].bits;
 			cb->code = tmpcode[dmax];
+			memcpy(&cb->timestamp, &tb->timestamp,
+			       sizeof(struct timeval));
 			sem_post(&codeready);
 			cwi = (cwi + 1) % RADIO433_RING_BUFFER_ENTRIES;
 		}
@@ -482,11 +452,12 @@ static void handleGpioInt(void)
 		}
 		incode = 1;
 		tptr = &tbuf[twi];
+		memcpy(&tptr->timestamp, &t, sizeof(struct timeval));
 		tptr->pulses = 0;
 		tptr->synctime = tsdiff;
 		pulscount = 0;
 		tclen = tsdiff;
-	} else if (incode) {
+	} else if (incode && tsdiff > RADIO433_MAX_NOISE_TIME) {
 		/* code transmission - expect high and low */
 		if (pulscount < npulsemax && tsdiff >= pulsetmin
 		    && tsdiff <= pulsetmax) {
@@ -505,8 +476,5 @@ static void handleGpioInt(void)
 			incode = 0;
 		}
 	}
-	/* ignore short noise spikes */
-	/*if (tsdiff > RADIO433_MAX_NOISE_TIME)
-		tsprev = tscur; */
 	tsprev = tscur;
 }
