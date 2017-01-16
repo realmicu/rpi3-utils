@@ -124,6 +124,8 @@ int main(int argc, char *argv[])
 				       devid & POWER433_DEVICE_D ? "D" : "",
 				       devid & POWER433_DEVICE_E ? "E" : "",
 				       btn ? "ON" : "OFF");
+			else
+				puts("");
 		}
 		else if (type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
 			if (Radio433_thmGetData(code, &sysid, &devid, &ch,
@@ -131,7 +133,11 @@ int main(int argc, char *argv[])
 				printf(" , %1d , T: %+.1lf C %c , H: %d %%\n",
 				       ch, temp, tdir < 0 ? '!' : trend[tdir],
 				       humid);
+			else
+				puts("");
 
 		}
+		else
+			puts("");
 	}
 }
