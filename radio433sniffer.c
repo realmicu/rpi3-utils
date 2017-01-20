@@ -10,23 +10,35 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sched.h>
+#include <semaphore.h>
+#include <pthread.h>
+#include <signal.h>
 
 #include <wiringPi.h>
 
 #include "radio433_lib.h"
 #include "radio433_dev.h"
 
-#define OWNER_UID	500
-#define OWNER_GID	500
+extern char *optarg;
+extern int optind, opterr, optopt;
 
-#include <signal.h>
+#define GPIO_PINS		28	/* number of Pi GPIO pins */
+#define LED_BLINK_MS		100	/* minimal LED blinking time in ms */
+
+sem_t blinksem;
+pthread_t blinkthread;
+int ledgpio, ledact;
 
 /* Show help */
 void help(char *progname)
 {
-	printf("Usage:\n\t%s {gpio}\n\n", progname);
+	printf("Usage:\n\t%s -g gpio [-u uid:gid] [-l ledgpio:ledact]\n\n", progname);
 	puts("Where:");
 	puts("\tgpio\t - GPIO pin with external RF receiver data (mandatory)");
+	puts("\tuid\t - user ID to switch to (optional)");
+	puts("\tgid\t - user group ID to switch to (optional)");
+	puts("\tledgpio\t - GPIO pin with LED to signal packet receiving (optional)");
+	puts("\tledact\t - LED activity: 0 for active low, 1 for active high (optional)");
 }
 
 /* drop super-user privileges */
@@ -51,6 +63,18 @@ int changeSched(void)
 	return 0;
 }
 
+/* LED blinking thread */
+/* (mail loop on/off is hardly noticeable) */
+void *blinkLED(void *arg)
+{
+	for(;;) {
+		sem_wait(&blinksem);
+		digitalWrite(ledgpio, ledact ? HIGH : LOW);
+		delay(LED_BLINK_MS);
+		digitalWrite(ledgpio, ledact ? LOW : HIGH);
+	}
+}
+
 /* Intercept TERM and INT signals */
 void signalQuit(int sig)
 {
@@ -67,6 +91,7 @@ int main(int argc, char *argv[])
 	struct tm *tl;
 	unsigned long long code;
 	int gpio, type, bits;
+	int opt, uid, gid, semv;
 	char *stype[] = { "PWR", "THM" };
 	int sysid, devid, btn;
 	int ch, batlow, tdir, humid;
@@ -80,7 +105,33 @@ int main(int argc, char *argv[])
 	}
 
 	/* get parameters */
-	sscanf(argv[1], "%d", &gpio);
+	gpio = -1;
+	uid = 0;
+	gid = 0;
+	ledgpio = -1;
+	ledact = 1;
+	while((opt = getopt(argc, argv, "g:u:l:")) != -1) {
+		if (opt == 'g')
+			sscanf(optarg, "%d", &gpio);
+		else if (opt == 'u')
+			sscanf(optarg, "%d:%d", &uid, &gid);
+		else if (opt == 'l')
+			sscanf(optarg, "%d:%d", &ledgpio, &ledact);
+		else if (opt == '?') {
+			help(argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (gpio < 0 || gpio > GPIO_PINS) {
+		fputs("Invalid RX GPIO pin.\n", stderr);
+		exit(EXIT_FAILURE);
+	}
+
+	if (ledgpio > GPIO_PINS || ledact < 0 || ledact > 1) {
+		fputs("Invalid LED specification.\n", stderr);
+		exit(EXIT_FAILURE);
+	}
 
 	/* initialize WiringPi library - use BCM GPIO numbers */
 	wiringPiSetupGpio();
@@ -96,10 +147,26 @@ int main(int argc, char *argv[])
 	}
 
 	/* drop privileges */
-	if (dropRootPriv(OWNER_UID, OWNER_GID)) {
-		fprintf(stderr, "Unable to drop super-user privileges: %s\n",
-			strerror (errno));
-		exit(-1);
+	if (uid > 0 && gid > 0) {
+		if (dropRootPriv(uid, gid)) {
+			fprintf(stderr, "Unable to drop super-user privileges: %s\n",
+				strerror (errno));
+			exit(EXIT_FAILURE);
+		}
+		else
+			printf("Dropping super-user privileges, running as UID=%d GID=%d.\n",
+			       uid, gid);
+	}
+
+	if (ledgpio > 0) {
+		printf("Activity LED set to GPIO %d (active %s).\n", ledgpio,
+		       ledact ? "high" : "low");
+		digitalWrite(ledgpio, ledact ? LOW : HIGH);
+		sem_init(&blinksem, 0, 0);
+		if (pthread_create(&blinkthread, NULL, blinkLED, NULL)) {
+			fputs("Cannot start blinking thread.\n", stderr);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	/* info */
@@ -109,6 +176,11 @@ int main(int argc, char *argv[])
 	/* function loop - never ends, send signal to exit */
 	for(;;) {
 		code = Radio433_getCode(&ts, &type, &bits);
+		if (ledgpio > 0) {
+			sem_getvalue(&blinksem, &semv);
+			if (semv < 1)	/* semaphore 0 or 1 */
+				sem_post(&blinksem);
+		}
 		tl = localtime(&ts.tv_sec);
 		printf("%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
 		       tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
