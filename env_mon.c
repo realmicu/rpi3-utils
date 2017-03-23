@@ -232,7 +232,6 @@ int drawSensorFrame(int ystart, const char *sensorname, int lines, char *labels[
 void updateFieldDouble(int y, int x, int sign, double value, char *unit,
 		       int bold)
 {
-	int i;
 	char ibuf[MAX_FIELD_LEN + 1], obuf[MAX_FIELD_LEN + 1];
 
 	memset(ibuf, 0, MAX_FIELD_LEN + 1);
@@ -333,16 +332,19 @@ int main(int argc, char *argv[])
 		t0 = HTU21D_getTemperature(htu21d);
 		h = HTU21D_getHumidity(htu21d);
 		i2cUnlock(semflg, i2csem);
-		if (t0 > t0max) t0max = t0;
-		if (t0 < t0min) t0min = t0;
-		if (h > hmax) hmax = h;
-		if (h < hmin) hmin = h;
-		updateFieldDouble(3, COLMIN, 0, hmin, "%", 0);
-		updateFieldDouble(3, COLNOW, 0, h, "%", 1);
-		updateFieldDouble(3, COLMAX, 0, hmax, "%", 0);
-		updateFieldDouble(5, COLMIN, 1, t0min, "C", 0);
-		updateFieldDouble(5, COLNOW, 1, t0, "C", 1);
-		updateFieldDouble(5, COLMAX, 1, t0max, "C", 0);
+		/* sometimes we get bad values (-5.0/-45.5), ignore them */
+		if (h != -5.0 && t0 != -45.5) {
+			if (t0 > t0max) t0max = t0;
+			if (t0 < t0min) t0min = t0;
+			if (h > hmax) hmax = h;
+			if (h < hmin) hmin = h;
+			updateFieldDouble(3, COLMIN, 0, hmin, "%", 0);
+			updateFieldDouble(3, COLNOW, 0, h, "%", 1);
+			updateFieldDouble(3, COLMAX, 0, hmax, "%", 0);
+			updateFieldDouble(5, COLMIN, 1, t0min, "C", 0);
+			updateFieldDouble(5, COLNOW, 1, t0, "C", 1);
+			updateFieldDouble(5, COLMAX, 1, t0max, "C", 0);
+		}
 
 		i2cLock(semflg, i2csem);
 		p = BMP180_getPressureFP(bmp180, BMP180_OSS_MODE_UHR, &t1);
