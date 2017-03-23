@@ -146,7 +146,7 @@ int formatMessage(char *buf, struct timeval *ts, int type,
 		   int bits, unsigned long long code)
 {
 	memset(buf, 0, MAX_MSG_SIZE);
-	sprintf(buf, "%s%lu.%lu;%d;%d;0x%016llX;%s\n", MSG_HDR, ts->tv_sec,
+	sprintf(buf, "%s%lu.%03u;%d;%d;0x%016llX;%s\n", MSG_HDR, ts->tv_sec,
 		ts->tv_usec / 1000, type, bits, code, MSG_END);
 	return strlen(buf);
 }
