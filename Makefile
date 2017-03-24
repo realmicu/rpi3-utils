@@ -187,11 +187,11 @@ radio433_lib.o:	radio433_lib.c radio433_lib.h radio433_types.h
 radio433_dev.o:	radio433_dev.c radio433_dev.h radio433_types.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-radio433sniffer:	radio433sniffer.c radio433_lib.o radio433_dev.o
+radio433sniffer: radio433sniffer.c radio433_lib.o radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
 
 radio433daemon:	radio433daemon.c radio433_lib.o radio433_dev.o
-	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
+	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS) -DHAS_CPUFREQ -lcpufreq
 
 radio433client:	radio433client.c radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS)

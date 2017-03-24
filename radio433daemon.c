@@ -17,6 +17,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdarg.h>
+#ifdef HAS_CPUFREQ
+#include <cpufreq.h>
+#endif
 
 #include <wiringPi.h>
 
@@ -48,6 +51,7 @@ extern int optind, opterr, optopt;
 #define MSG_END			"<ZZ>"
 #define LOG_INFO		"info"
 #define LOG_NOTICE		"notice"
+#define LOG_WARN		"warn"
 #define LOG_ERROR		"error"
 
 int vflag;
@@ -112,6 +116,25 @@ int changeSched(void)
 		return -1;
 	return 0;
 }
+
+#ifdef HAS_CPUFREQ
+/* verify if cpufreq governor prefers 'fixed' frequencies */
+/* (gpio timings require stable system clock) */
+int checkCpuFreq(void)
+{
+	struct cpufreq_policy *p;
+	int s;
+
+	p = cpufreq_get_policy(0);
+	if (!strcmp(p->governor, "powersave") ||
+	    !strcmp(p->governor, "performance"))
+		s = 0;
+	else
+		s = 1;
+	cpufreq_put_policy(p);	/* free pointer */
+	return s;
+}
+#endif
 
 /* blink LED */
 void blinkLED(void)
@@ -349,6 +372,13 @@ int main(int argc, char *argv[])
 		fputs("Cannot start network listener thread.\n", stderr);
 		exit(EXIT_FAILURE);
 	}
+
+#ifdef HAS_CPUFREQ
+	/* warn user if system frequency is dynamic */
+	if (checkCpuFreq())
+		logprintf(stdout, LOG_WARN,
+			  "current cpufreq governor is not optimal for radio code timing");
+#endif
 
 	/* info */
 	logprintf(stdout, LOG_NOTICE,
