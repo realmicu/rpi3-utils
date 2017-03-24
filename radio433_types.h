@@ -1,0 +1,24 @@
+#ifndef _RADIO433_TYPES_H_
+#define _RADIO433_TYPES_H_
+
+/* Supported devices */
+#define RADIO433_DEVICE_KEMOTURZ1226	0
+#define RADIO433_DEVICE_HYUWSSENZOR77TH	1
+#define RADIO433_DEVICES		2
+
+/* Device and button constants */
+#define POWER433_DEVICE_A	0x10
+#define POWER433_DEVICE_B	0x08
+#define POWER433_DEVICE_C	0x04
+#define POWER433_DEVICE_D	0x02
+#define POWER433_DEVICE_E	0x01
+#define POWER433_BUTTON_OFF	0
+#define POWER433_BUTTON_ON	1
+
+/* Temperature trend (direction of change) */
+#define THERMO433_TEMP_TREND_DOWN	2
+#define THERMO433_TEMP_TREND_UP		1
+#define THERMO433_TEMP_TREND_STABLE	0
+#define THERMO433_TEMP_TREND_INVALID	-1
+
+#endif
