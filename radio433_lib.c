@@ -412,7 +412,7 @@ static void *codeAnalyzerThread(void *arg)
 			}
 		if (dmax >= 0) {
 			/* signal that code is OK and ready */
-			cb->type = dmax;
+			cb->type = tDevInfo[dmax].type;
 			cb->bits = tDevInfo[dmax].bits;
 			cb->code = tmpcode[dmax];
 			memcpy(&cb->timestamp, &tb->timestamp,

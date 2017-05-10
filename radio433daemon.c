@@ -32,13 +32,13 @@ extern int optind, opterr, optopt;
 /* Message format (semicolon-separated one line):
    header (<RX<)
    timestamp - seconds.miliseconds - decimal
-   type - decimal
+   type - hex - 32-bit value (with 0x prefix)
    bits - decimal
    data - hex - 64-bit value (with 0x prefix)
    stop mark (<ZZ>)
    Example:
-   <RX>1490084244.768;0;32;0x0000000000441454;<ZZ>
-   <RX>1490084239.165;1;36;0x00000004A03608F9;<ZZ>
+   <RX>1490084244.768;0x0101;32;0x0000000000441454;<ZZ>
+   <RX>1490084239.165;0x0201;36;0x00000004A03608F9;<ZZ>
  */
 
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -169,7 +169,7 @@ int formatMessage(char *buf, struct timeval *ts, int type,
 		   int bits, unsigned long long code)
 {
 	memset(buf, 0, MAX_MSG_SIZE);
-	sprintf(buf, "%s%lu.%03u;%d;%d;0x%016llX;%s\n", MSG_HDR, ts->tv_sec,
+	sprintf(buf, "%s%lu.%03u;0x%04X;%d;0x%016llX;%s\n", MSG_HDR, ts->tv_sec,
 		ts->tv_usec / 1000, type, bits, code, MSG_END);
 	return strlen(buf);
 }

@@ -91,8 +91,8 @@ int main(int argc, char *argv[])
 	struct tm *tl;
 	unsigned long long code;
 	int gpio, type, bits;
-	int opt, uid, gid, semv;
-	char *stype[] = { "PWR", "THM" };
+	int opt, uid, gid, semv, tid;
+	char *stype[] = { "NUL", "PWR", "THM", "RMT" };
 	int sysid, devid, btn;
 	int ch, batlow, tdir, humid;
 	double temp;
@@ -185,7 +185,15 @@ int main(int argc, char *argv[])
 		printf("%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
 		       tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
 		       tl->tm_sec, ts.tv_usec / 1000);
-		printf("  %s len = %d , code = 0x%0*llX", stype[type], bits,
+		if (type & RADIO433_CLASS_POWER)
+			tid = 1;
+		else if (type & RADIO433_CLASS_WEATHER)
+			tid = 2;
+		else if (type & RADIO433_CLASS_REMOTE)
+			tid = 3;
+		else
+			tid = 0;
+		printf("  %s len = %d , code = 0x%0*llX", stype[tid] , bits,
 		       bits >> 2, code);
 		if (type == RADIO433_DEVICE_KEMOTURZ1226) {
 			if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))

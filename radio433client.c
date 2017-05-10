@@ -47,8 +47,8 @@ int main(int argc, char *argv[])
 	unsigned int tsms;
 	struct tm *tl;
 	unsigned long long code;
-	int opt, type, bits;
-	char *stype[] = { "PWR", "THM" };
+	int opt, tid, type, bits;
+        char *stype[] = { "NUL", "PWR", "THM", "RMT" };
 	int sysid, devid, btn;
 	int ch, batlow, tdir, humid;
 	double temp;
@@ -119,13 +119,21 @@ int main(int argc, char *argv[])
 		if (strncmp(buf, MSG_HDR, 4) || strncmp(buf + msglen - 5, MSG_EOT, 4))
 			continue;
 		/* expect formatted message with 5 numbers */
-		if (sscanf(buf + 4, "%lu.%u;%d;%d;0x%llX;", &tss, &tsms, &type, &bits, &code) != 5)
+		if (sscanf(buf + 4, "%lu.%u;0x%X;%d;0x%llX;", &tss, &tsms, &type, &bits, &code) != 5)
 			continue;
 		tl = localtime(&tss);
 		printf("%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
 		       tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
 		       tl->tm_sec, tsms);
-		printf("  %s len = %d , code = 0x%0*llX", stype[type], bits,
+                if (type & RADIO433_CLASS_POWER)
+                        tid = 1;
+                else if (type & RADIO433_CLASS_WEATHER)
+                        tid = 2;
+                else if (type & RADIO433_CLASS_REMOTE)
+                        tid = 3;
+                else
+                        tid = 0;
+		printf("  %s len = %d , code = 0x%0*llX", stype[tid], bits,
 		       (bits + 3) >> 2, code);
 		if (type == RADIO433_DEVICE_KEMOTURZ1226) {
 			if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))
