@@ -23,7 +23,6 @@
 
 #include <wiringPi.h>
 
-#include "radio433_lib.h"
 #include "radio433_dev.h"
 
 /*
