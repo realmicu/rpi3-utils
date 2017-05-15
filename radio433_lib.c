@@ -55,7 +55,7 @@ struct deviceDesc {
 	int type;		/* device */
 	int coding;		/* coding schema (determines pulse_data) */
 	int bits;		/* bits per transmissions */
-	int interval;		/* interval between transmissions (sec) */
+	int interval;		/* interval between transmissions (msec) */
 	int repeats;		/* code repeats in single transmission */
 	void *pulse_data;	/* pulse data */
 };
@@ -121,7 +121,7 @@ static struct deviceDesc tDevInfo[RADIO433_DEVICES] = {
 	{ RADIO433_DEVICE_HYUWSSENZOR77TH,
 	  RADIO433_CODING_LOWVAR,
 	  36,
-	  33,
+	  33000,
 	  4,
 	  (void*)&hyuwsPulse
 	}
