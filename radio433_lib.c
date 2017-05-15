@@ -136,6 +136,7 @@ static struct deviceDesc tDevInfo[RADIO433_DEVICES] = {
 struct timingBuf {
 	struct timeval timestamp;
 	int pulses;
+	int codetime;		/* total code length in ms */
 	unsigned long synctime;
 	unsigned long *timbuf;
 } tbuf[RADIO433_RING_BUFFER_ENTRIES];
@@ -143,6 +144,8 @@ struct codeBuf {
 	struct timeval timestamp;
 	int type;
 	int bits;
+	int codetime;		/* total code length in ms */
+	int devidx;		/* index in tDevInfo array */
 	unsigned long long code;
 } cbuf[RADIO433_RING_BUFFER_ENTRIES];
 static volatile int tri, twi, cri, cwi;	/* read and write buffer idx */
@@ -293,6 +296,31 @@ unsigned long long Radio433_getCode(struct timeval *ts,
 	return cb->code;
 }
 
+/* Get code with extended information */
+unsigned long long Radio433_getCodeExt(struct timeval *ts,
+				       int *type, int *bits, int *codetime,
+				       int *repeats, int *interval)
+{
+	struct codeBuf *cb;
+
+	sem_wait(&codeready);
+	cb = &cbuf[cri];
+	if (ts)
+		memcpy(ts, &cb->timestamp, sizeof(struct timeval));
+	if (type)
+		*type = cb->type;
+	if (bits)
+		*bits = cb->bits;
+	if (codetime)
+		*codetime = cb->codetime;
+	if (repeats)
+		*repeats = tDevInfo[cb->devidx].repeats;
+	if (interval)
+		*interval = tDevInfo[cb->devidx].interval;
+	cri = (cri + 1) % RADIO433_RING_BUFFER_ENTRIES;
+	return cb->code;
+}
+
 /*
  * *********************
  * Code analyzing thread
@@ -414,7 +442,9 @@ static void *codeAnalyzerThread(void *arg)
 			/* signal that code is OK and ready */
 			cb->type = tDevInfo[dmax].type;
 			cb->bits = tDevInfo[dmax].bits;
+			cb->codetime = tb->codetime;
 			cb->code = tmpcode[dmax];
+			cb->devidx = dmax;
 			memcpy(&cb->timestamp, &tb->timestamp,
 			       sizeof(struct timeval));
 			sem_post(&codeready);
@@ -455,6 +485,7 @@ static void handleGpioInt(void)
 		memcpy(&tptr->timestamp, &t, sizeof(struct timeval));
 		tptr->pulses = 0;
 		tptr->synctime = tsdiff;
+		tptr->codetime = 0;
 		pulscount = 0;
 		tclen = tsdiff;
 	} else if (incode && tsdiff > RADIO433_MAX_NOISE_TIME) {
@@ -469,6 +500,7 @@ static void handleGpioInt(void)
 		} else {
 			if (tclen >= codetmin && tclen <= codetmax) {
 				/* code completed */
+				tptr->codetime = (tclen + 999) / 1000; /* us to ms */
 				sem_post(&timingready);
 				twi = (twi + 1) % RADIO433_RING_BUFFER_ENTRIES;
 			}
