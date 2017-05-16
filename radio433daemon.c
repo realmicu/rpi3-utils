@@ -32,13 +32,16 @@ extern int optind, opterr, optopt;
 /* Message format (semicolon-separated one line):
    header (<RX<)
    timestamp - seconds.miliseconds - decimal
+   codetime - code length in miliseconds - decimal
+   repeats - number of codes in single transmission - decimal
+   interval - time between transmissions in miliseconds - decimal
    type - hex - 32-bit value (with 0x prefix)
    bits - decimal
    data - hex - 64-bit value (with 0x prefix)
    stop mark (<ZZ>)
    Example:
-   <RX>1490084244.768;0x0101;32;0x0000000000441454;<ZZ>
-   <RX>1490084239.165;0x0201;36;0x00000004A03608F9;<ZZ>
+   <RX>1490084244.768;40;3;0;0x0101;32;0x0000000000441454;<ZZ>
+   <RX>1490084239.165;128;4;33000;0x0201;36;0x00000004A03608F9;<ZZ>
  */
 
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -165,12 +168,14 @@ void signalQuit(int sig)
 }
 
 /* Format message */
-int formatMessage(char *buf, struct timeval *ts, int type,
-		   int bits, unsigned long long code)
+int formatMessage(char *buf, struct timeval *ts, int type, int bits,
+		  int codelen, int repeats, int interval,
+		  unsigned long long code)
 {
 	memset(buf, 0, MAX_MSG_SIZE);
-	sprintf(buf, "%s%lu.%03u;0x%04X;%d;0x%016llX;%s\n", MSG_HDR, ts->tv_sec,
-		ts->tv_usec / 1000, type, bits, code, MSG_END);
+	sprintf(buf, "%s%lu.%03u;%d;%d;%d;0x%04X;%d;0x%016llX;%s\n", MSG_HDR,
+		ts->tv_sec, ts->tv_usec / 1000, codelen, repeats, interval,
+		type, bits, code, MSG_END);
 	return strlen(buf);
 }
 
@@ -253,6 +258,7 @@ int main(int argc, char *argv[])
 	char srvaddrstr[16];
 	struct sockaddr_in sinsrv;
 	int i, len;
+	int codelen, repeats, interval;
 	char buf[MAX_MSG_SIZE + 1];
 
 	/* show help */
@@ -388,10 +394,12 @@ int main(int argc, char *argv[])
 	/* function loop - never ends, send signal to exit */
 	for(;;) {
 		/* codes are buffered, so this loop can be more relaxed */
-		code = Radio433_getCode(&ts, &type, &bits);
+		code = Radio433_getCodeExt(&ts, &type, &bits, &codelen,
+					   &repeats, &interval);
 		if (ledgpio > 0)
 			blinkLED();
-		len = formatMessage(buf, &ts, type, bits, code);
+		len = formatMessage(buf, &ts, type, bits, codelen,
+				    repeats, interval, code);
 		if (vflag)
 			logprintf(stdout, LOG_INFO, "MSG(%d): %s", len, buf);
 		updateClients(buf, len);

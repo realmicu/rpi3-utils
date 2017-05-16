@@ -493,10 +493,10 @@ static void handleGpioInt(void)
 			tptr->pulses++;
 			tptr->timbuf[pulscount++] = tsdiff;
 			tclen += tsdiff;
+			tptr->codetime = tclen;
 		} else {
 			if (tclen >= codetmin && tclen <= codetmax) {
 				/* code completed */
-				tptr->codetime = tclen;
 				sem_post(&timingready);
 				twi = (twi + 1) % RADIO433_RING_BUFFER_ENTRIES;
 			}

@@ -57,6 +57,7 @@ int main(int argc, char *argv[])
 	struct sockaddr_in clntsin;
 	char buf[MAX_MSG_SIZE];
 	int waitflag;
+	int codelen, repeats, interval;
 
 	/* get parameters */
 	memset((char *)&clntsin, 0, sizeof(clntsin));
@@ -118,8 +119,9 @@ int main(int argc, char *argv[])
 		/* check for start and stop strings */
 		if (strncmp(buf, MSG_HDR, 4) || strncmp(buf + msglen - 5, MSG_EOT, 4))
 			continue;
-		/* expect formatted message with 5 numbers */
-		if (sscanf(buf + 4, "%lu.%u;0x%X;%d;0x%llX;", &tss, &tsms, &type, &bits, &code) != 5)
+		/* expect formatted message with 8 numbers */
+		if (sscanf(buf + 4, "%lu.%u;%d;%d;%d;0x%X;%d;0x%llX;", &tss, &tsms,
+			   &codelen, &repeats, &interval, &type, &bits, &code) != 8)
 			continue;
 		tl = localtime(&tss);
 		printf("%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
