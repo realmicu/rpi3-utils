@@ -22,11 +22,11 @@
  *    timestamp - timestamp as seconds.miliseconds
  *    interval - transmission interval in ms
  *    code - raw code in hex
- *    temp/{cur,min,max,unit} - temperature in Celsius, signed integer (with +/-)
- *    temp/trend - temperature trend calculated by device
- *    humid/{cur,min,max,unit} - air humidity in percent, integer [0-100]
  *    batlow - battery low indicator
  *    signal/{cur,max} - number of packets total vs received
+ *    temp/{cur,min,max,unit} - temperature in Celsius, signed integer (with +/-)
+ *    temp/trend - temperature trend calculated by device ('\', '_', '/')
+ *    humid/{cur,min,max,unit} - air humidity in percent, integer [0-100]
  *
  *  For I2C (locally connected) sensors:
  *
@@ -41,8 +41,8 @@
  *  + client_thread accepts clients, immediately sends info and closes socket
  *  + optional i2c_thread reads from I2C sensors and updates sensor list
  *
- *  Sensor list utilizes lazy timing and housekeeping, it means that age is updated
- *  and obsolete entries removed only during access (updates and sending to clients)
+ *  Sensor list utilizes lazy timing and housekeeping, it means that obsolete
+ *  entries are removed only during access (updates and sending to clients)
  */
 
 #define _GNU_SOURCE
@@ -56,6 +56,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sched.h>
 #include <semaphore.h>
@@ -73,7 +74,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy 0.90 (radio only) server"
+#define BANNER			"SensorProxy v0.92 (radio only) server"
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
 #define SERVER_PORT		5444
 #define SERVER_ADDR		"0.0.0.0"
@@ -243,7 +244,7 @@ int connectRadioSrv(struct sockaddr_in *s)
 			logprintf(logfd, LOG_WARN,
 				  "connection broken with radio server %s port %d: %s\n",
 				  inet_ntoa(s->sin_addr), ntohs(s->sin_port),
-				  strerror (errno));
+				  strerror(errno));
 			logprintf(logfd, LOG_WARN, "retrying in %d seconds...",
 				  RECONNECT_DELAY_SEC);
 			close(fd);
@@ -262,7 +263,32 @@ int connectRadioSrv(struct sockaddr_in *s)
 /* Daemonize process */
 int daemonize(void)
 {
-	/* does nothing for now */
+	pid_t pid, sid;
+
+	/* fork then parent exits */
+	pid = fork();
+	if (pid < 0)
+		return 1;
+	if (pid > 0)
+		exit(EXIT_SUCCESS);
+
+	/* set default umask, will be overriden by open anyway */
+	umask(0);
+
+	/* create new session ID */
+	sid = setsid();
+	if (sid < 0)
+		return 2;
+
+	/* change current working dir to root */
+	if (chdir("/") < 0)
+		return 3;
+
+	/* close standard file descriptors */
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+
 	return 0;
 }
 
@@ -327,13 +353,13 @@ int formatMessage(char *buf, size_t len)
 			if (s->type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
 				dhs = (struct datahyuws77th *)(s->data);
 				bufptr += sprintf(bufptr, "%s/batlow=%d\n", dbuf, dhs->batlow);
-				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dhs->temp.cur);
 				bufptr += sprintf(bufptr, "%s/temp/min=%+.1lf\n", dbuf, dhs->temp.min);
+				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dhs->temp.cur);
 				bufptr += sprintf(bufptr, "%s/temp/max=%+.1lf\n", dbuf, dhs->temp.max);
 				bufptr += sprintf(bufptr, "%s/temp/unit=\"%s\"\n", dbuf, dhs->temp.unit);
 				bufptr += sprintf(bufptr, "%s/temp/trend=\"%c\"\n", dbuf, trend[dhs->trend]);
-				bufptr += sprintf(bufptr, "%s/humid/cur=%d\n", dbuf, dhs->humid.cur);
 				bufptr += sprintf(bufptr, "%s/humid/min=%d\n", dbuf, dhs->humid.min);
+				bufptr += sprintf(bufptr, "%s/humid/cur=%d\n", dbuf, dhs->humid.cur);
 				bufptr += sprintf(bufptr, "%s/humid/max=%d\n", dbuf, dhs->humid.max);
 				bufptr += sprintf(bufptr, "%s/humid/unit=\"%s\"\n", dbuf, dhs->humid.unit);
 			}
@@ -642,12 +668,19 @@ int main(int argc, char *argv[])
 			logfd = open(logfname, O_CREAT | O_APPEND | O_SYNC | O_WRONLY, FILE_UMASK);
 			if (logfd == -1) {
 				dprintf(STDERR_FILENO, "Unable to open log file '%s': %s\n",
-					logfname, strerror (errno));
+					logfname, strerror(errno));
 				exit(EXIT_FAILURE);
 			}
 		} else
 			logfd = -1;
 	}
+
+	/* put banner in log */
+#ifdef BUILDSTAMP
+	logprintf(logfd, LOG_NOTICE, "starting %s build %s\n", BANNER, BUILDSTAMP);
+#else
+	logprintf(logfd, LOG_NOTICE, "starting %s\n", BANNER);
+#endif
 
 	/* check if pid file exists */
 	pidfd = open(pidfname, O_PATH, FILE_UMASK);
@@ -658,24 +691,35 @@ int main(int argc, char *argv[])
 			pidfname);
 		if (!debugflag)
 			logprintf(logfd, LOG_ERROR, "unable to create PID file %s: %s\n",
-				  pidfname, strerror (errno));
+				  pidfname, strerror(errno));
 		close(logfd);
 		exit(EXIT_FAILURE);
 	}
 
 	/* setup process */
 	if (!debugflag)
-		daemonize();
+		if (daemonize()) {
+			dprintf(STDERR_FILENO, "Unable to fork to background: %s\n",
+				strerror(errno));
+			logprintf(logfd, LOG_ERROR, "unable to fork to background: %s\n",
+				  strerror(errno));
+			close(logfd);
+			exit(EXIT_FAILURE);
+		} else {
+			procpid = getpid();
+			logprintf(logfd, LOG_NOTICE, "forking to background with PID %d\n",
+				  procpid);
+		}
 
 	/* populate pid file (new PID after daemonize()) */
-	procpid = getpid();
 	pidfd = open(pidfname, O_CREAT | O_WRONLY, FILE_UMASK);
 	if (pidfd < 0) {
-		dprintf(STDERR_FILENO, "Unable to create PID file %s: %s\n",
-			pidfname, strerror (errno));
 		if (!debugflag)
 			logprintf(logfd, LOG_ERROR, "unable to create PID file %s: %s\n",
-				  pidfname, strerror (errno));
+				  pidfname, strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to create PID file %s: %s\n",
+				pidfname, strerror(errno));
 		endProcess(EXIT_FAILURE);
 	}
 	dprintf(pidfd, "%d\n", procpid);
@@ -683,6 +727,8 @@ int main(int argc, char *argv[])
 
 	/* signal handler */
         memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = SIG_IGN;
+        sigaction(SIGQUIT, &sa, NULL);
         sa.sa_handler = &signalQuit;
         sigaction(SIGTERM, &sa, NULL);
         sigaction(SIGINT, &sa, NULL);
@@ -702,27 +748,31 @@ int main(int argc, char *argv[])
 	/* setup proxy server */
 	srvfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (srvfd == -1) {
-		dprintf(STDERR_FILENO, "Unable to create server socket: %s\n",
-			strerror(errno));
 		if (!debugflag)
 			logprintf(logfd, LOG_ERROR, "unable to create server socket: %s\n",
 				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to create server socket: %s\n",
+				strerror(errno));
+
 		endProcess(EXIT_FAILURE);
 	}
 	if (bind(srvfd, (struct sockaddr *)&srvsin, sizeof(srvsin)) == -1) {
-		dprintf(STDERR_FILENO, "Unable to bind to server socket: %s\n",
-			strerror(errno));
 		if (!debugflag)
 			logprintf(logfd, LOG_ERROR, "unable to bind to server socket: %s\n",
 				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to bind to server socket: %s\n",
+				strerror(errno));
 		endProcess(EXIT_FAILURE);
 	}
 	if (listen(srvfd, MAX_CLNT_QUEUE) == -1) {
-		dprintf(STDERR_FILENO, "Unable to listen to server socket: %s\n",
-			strerror(errno));
 		if (!debugflag)
 			logprintf(logfd, LOG_ERROR, "unable to listen to server socket: %s\n",
 				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to listen to server socket: %s\n",
+				strerror(errno));
 		endProcess(EXIT_FAILURE);
 	}
 	logprintf(logfd, LOG_NOTICE, "accepting client TCP connections on %s port %d\n",
@@ -735,9 +785,10 @@ int main(int argc, char *argv[])
 
 	/* start network client update thread */
 	if (pthread_create(&clntthread, NULL, clientASCThread, NULL)) {
-		dprintf(STDERR_FILENO, "Cannot start network listener thread.\n");
 		if (!debugflag)
 			logprintf(logfd, LOG_ERROR, "cannot start network listener thread\n");
+		else
+			dprintf(STDERR_FILENO, "Cannot start network listener thread.\n");
 		endProcess(EXIT_FAILURE);
 	}
 	clntrun = 1;
@@ -776,5 +827,6 @@ int main(int argc, char *argv[])
 			sensorRadioUpdate(&rm);
 			msgptr = msgend + 5;
 		} while (msgptr < radbuf + msglen);
+		logprintf(logfd, LOG_INFO, "received update packet from server\n");
 	}
 }

@@ -11,7 +11,7 @@ PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer \
 	radio433sniffer radio433daemon radio433client sensorproxy
 
-BUILDSTAMP = $(shell echo `date '+%Y%m%d-git'``git log --oneline -1 | cut -d' ' -f1`)
+BUILDSTAMP = $(shell echo `date '+%Y%m%d-git@'``git log --oneline -1 | cut -d' ' -f1`)
 
 #################
 # General rules #
