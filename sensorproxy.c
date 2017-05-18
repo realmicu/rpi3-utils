@@ -120,13 +120,12 @@ const char *busname[] = { "(null)", "radio", "i2c" };
 const char trend[3] = { '_', '/', '\\' };
 extern char *optarg;
 extern int optind, opterr, optopt;
-int debugflag, i2cdelay, clntrun;
+volatile int debugflag, i2cdelay, clntrun;
 pthread_t clntthread, i2cthread;
 pid_t procpid;
 char progname[PATH_MAX + 1], logfname[PATH_MAX + 1], pidfname[PATH_MAX + 1];
-int logfd, srvfd, radfd; /* files and sockets */
+volatile int logfd, srvfd, radfd; /* files and sockets */
 sem_t sensem;		/* semaphore for sensor list updates */
-int sensnum;
 
 struct radmsg {
 	time_t tsec;
@@ -205,6 +204,7 @@ void help(void)
 	puts("\tserver      - IPv4 address of radio server (mandatory)");
 	printf("\tport        - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
 	puts("\nSupported devices - Radio: hyuws77th; I2C: htu21d, bmp180, bh1750\n");
+	puts("\nSignal actions: SIGHUP (log reset and reconnect)\n");
 }
 
 /* Log line header */
@@ -319,6 +319,21 @@ void signalQuit(int sig)
 	endProcess(0);
 }
 
+/* SIGHUP - reopen log file, useful for logrotate */
+void signalReopenLog(int sig)
+{
+	if (!debugflag && logfd >= 0) {
+		logprintf(logfd, LOG_NOTICE, "signal %d received\n", sig);
+		logprintf(logfd, LOG_NOTICE, "closing log file\n");
+		fsync(logfd);	/* never hurts */
+		close(logfd);
+		logfd = open(logfname, O_CREAT | O_TRUNC | O_SYNC | O_WRONLY, FILE_UMASK);
+		if (logfd == -1)
+			endProcess(EXIT_FAILURE);
+		logprintf(logfd, LOG_NOTICE, "log file flushed after receiving signal %d\n", sig);
+	}
+}
+
 /* Format network message */
 int formatMessage(char *buf, size_t len)
 {
@@ -381,9 +396,6 @@ int findFreeSlot(void)
 {
 	int i;
 
-	if (sensnum == MAX_SENSORS)
-		return -1;	/* table full */
-
 	for(i = 0; i < MAX_SENSORS; i++)
 		if (!senstbl[i].type)
 			break;
@@ -413,9 +425,6 @@ void sensorTableClean(void)
 	int i;
 	struct timeval t;
 	struct sensorentry *s;
-
-	if (!sensnum)
-		return;
 
 	gettimeofday(&t, NULL);
 	sem_wait(&sensem);
@@ -534,6 +543,10 @@ void *clientASCThread(void *arg)
 	struct sockaddr_in clin;
 	char msgbuf[BUFFER_SIZE + 1];
 	int len;
+	sigset_t blkset;
+
+	sigfillset(&blkset);
+	pthread_sigmask(SIG_BLOCK, &blkset, NULL);
 
 	for(;;) {
 		clen = sizeof(struct sockaddr_in);
@@ -559,7 +572,10 @@ void *clientASCThread(void *arg)
 /* TODO: I2C sensor reading thread */
 void *i2cSensorThread(void *arg)
 {
+	sigset_t blkset;
 
+	sigfillset(&blkset);
+	pthread_sigmask(SIG_BLOCK, &blkset, NULL);
 }
 
 /* ************ */
@@ -726,12 +742,14 @@ int main(int argc, char *argv[])
 	close(pidfd);
 
 	/* signal handler */
-        memset(&sa, 0, sizeof(sa));
+	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = SIG_IGN;
-        sigaction(SIGQUIT, &sa, NULL);
-        sa.sa_handler = &signalQuit;
-        sigaction(SIGTERM, &sa, NULL);
-        sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGQUIT, &sa, NULL);
+	sa.sa_handler = &signalQuit;
+	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGINT, &sa, NULL);
+	sa.sa_handler = &signalReopenLog;
+	sigaction(SIGHUP, &sa, NULL);
 
 	/* connect to radio server, wait/reconnect if server is down */
 	radfd = connectRadioSrv(&radsin);
@@ -780,7 +798,6 @@ int main(int argc, char *argv[])
 
 	/* initialize sensor list */
 	memset(senstbl, 0, MAX_SENSORS * sizeof(struct sensorentry));
-	sensnum = 0;
 	sem_init(&sensem, 0, 1);
 
 	/* start network client update thread */
