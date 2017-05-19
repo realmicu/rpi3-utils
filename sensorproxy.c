@@ -126,6 +126,7 @@ pid_t procpid;
 char progname[PATH_MAX + 1], logfname[PATH_MAX + 1], pidfname[PATH_MAX + 1];
 volatile int logfd, srvfd, radfd; /* files and sockets */
 sem_t sensem;		/* semaphore for sensor list updates */
+sem_t logsem;		/* log file semaphore */
 
 struct radmsg {
 	time_t tsec;
@@ -216,6 +217,7 @@ void logprintf(int fd, const char *level, const char *fmt, ...)
 
 	if (fd < 0)
 		return;
+	sem_wait(&logsem);
 	gettimeofday(&ts, NULL);
 	tl = localtime(&ts.tv_sec);
 	dprintf(fd, "%d-%02d-%02d %02d:%02d:%02d.%03u %s[%d] %s: ",
@@ -225,6 +227,7 @@ void logprintf(int fd, const char *level, const char *fmt, ...)
 	va_start(ap, fmt);
 	vdprintf(fd, fmt, ap);
 	va_end(ap);
+	sem_post(&logsem);
 }
 
 /* Connect/reconnect to radio daemon */
@@ -690,6 +693,7 @@ int main(int argc, char *argv[])
 		} else
 			logfd = -1;
 	}
+	sem_init(&logsem, 0, 1);
 
 	/* put banner in log */
 #ifdef BUILDSTAMP
