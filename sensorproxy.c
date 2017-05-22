@@ -74,7 +74,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.92 (radio only) server"
+#define BANNER			"SensorProxy v0.94 (radio only) server"
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
 #define SERVER_PORT		5444
 #define SERVER_ADDR		"0.0.0.0"
@@ -121,6 +121,7 @@ const char trend[3] = { '_', '/', '\\' };
 extern char *optarg;
 extern int optind, opterr, optopt;
 volatile int debugflag, i2cdelay, clntrun;
+volatile int mrstflag, rdelflag;
 pthread_t clntthread, i2cthread;
 pid_t procpid;
 char progname[PATH_MAX + 1], logfname[PATH_MAX + 1], pidfname[PATH_MAX + 1];
@@ -204,8 +205,10 @@ void help(void)
 	printf("\t-p tcpport  - TCP port to listen on (optional, default is %d)\n", SERVER_PORT);
 	puts("\tserver      - IPv4 address of radio server (mandatory)");
 	printf("\tport        - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
-	puts("\nSupported devices - Radio: hyuws77th; I2C: htu21d, bmp180, bh1750\n");
-	puts("\nSignal actions: SIGHUP (log reset and reconnect)\n");
+	puts("\nSupported devices - Radio: hyuws77th; I2C: htu21d, bmp180, bh1750");
+	puts("\nSignal actions: SIGHUP (log file truncate and reopen)");
+	puts("                SIGUSR1 (reset min and max values for all sensors)");
+	puts("                SIGUSR2 (delete all radio sensors, initiate re-discover)\n");
 }
 
 /* Log line header */
@@ -337,6 +340,22 @@ void signalReopenLog(int sig)
 	}
 }
 
+/* SIGUSR1 - signal to reset min and max values before client transmission */
+void signalRstMinMax(int sig)
+{
+	logprintf(logfd, LOG_NOTICE, "signal %d received\n", sig);
+	logprintf(logfd, LOG_NOTICE, "min and max values will be reset with next read\n", sig);
+	mrstflag = 1;
+}
+
+/* SIGUSR2 - signal to remove all radio sensors before client transmission */
+void signalDelRadio(int sig)
+{
+	logprintf(logfd, LOG_NOTICE, "signal %d received\n", sig);
+	logprintf(logfd, LOG_NOTICE, "all radio sensors will be deleted with next read\n", sig);
+	rdelflag = 1;
+}
+
 /* Format network message */
 int formatMessage(char *buf, size_t len)
 {
@@ -393,7 +412,6 @@ int formatMessage(char *buf, size_t len)
         return strlen(buf);
 }
 
-
 /* Find free slot in sensor table */
 int findFreeSlot(void)
 {
@@ -420,6 +438,21 @@ void sensorEntryDelete(int i)
 	memset(s, 0, sizeof(struct sensorentry));
 }
 
+/* Remove all radio sensors from table */
+void sensorRadioRemoveAll(void)
+{
+        int i;
+        struct sensorentry *s;
+
+        sem_wait(&sensem);
+        for(i = 0; i < MAX_SENSORS; i++) {
+                s = &senstbl[i];
+                if (s->bus == SB_RADIO)
+                                sensorEntryDelete(i);
+        }
+        sem_post(&sensem);
+}
+
 /* Remove stale sensors from table */
 /* entry is expired if time difference is more
  * than SENSOR_ENTRY_TTL intervals */
@@ -439,6 +472,27 @@ void sensorTableClean(void)
 				sensorEntryDelete(i);
 	}
 	sem_post(&sensem);
+}
+
+/* Reset min/max for all active sensors */
+void sensorResetMinMax(void)
+{
+        int i;
+        struct sensorentry *s;
+        struct datahyuws77th *dhs;
+
+        sem_wait(&sensem);
+        for(i = 0; i < MAX_SENSORS; i++) {
+                s = &senstbl[i];
+                if (s->type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
+                        dhs = (struct datahyuws77th *)(s->data);
+                        dhs->temp.min = dhs->temp.cur;
+                        dhs->temp.max = dhs->temp.cur;
+                        dhs->humid.min = dhs->humid.cur;
+                        dhs->humid.max = dhs->humid.cur;
+                }
+        }
+        sem_post(&sensem);
 }
 
 /* Update remote sensor in table */
@@ -557,7 +611,15 @@ void *clientASCThread(void *arg)
 		logprintf(logfd, LOG_INFO,
 			  "client %s [%d] connected successfully\n",
 			  inet_ntoa(clin.sin_addr), clfd);
+		if (rdelflag) {
+			sensorRadioRemoveAll();
+			rdelflag = 0;
+		}
 		sensorTableClean();
+		if (mrstflag) {
+			sensorResetMinMax();
+			mrstflag = 0;
+		}
 		len = formatMessage(msgbuf, BUFFER_SIZE);
 		if (debugflag)
 			logprintf(logfd, LOG_DEBUG,
@@ -617,6 +679,8 @@ int main(int argc, char *argv[])
 	srvfd = -1;
 	radfd = -1;
 	clntrun = 0;
+	mrstflag = 0;
+	rdelflag = 0;
 
 	/* get parameters */
 	debugflag = 0;
@@ -754,6 +818,10 @@ int main(int argc, char *argv[])
 	sigaction(SIGINT, &sa, NULL);
 	sa.sa_handler = &signalReopenLog;
 	sigaction(SIGHUP, &sa, NULL);
+	sa.sa_handler = &signalRstMinMax;
+	sigaction(SIGUSR1, &sa, NULL);
+	sa.sa_handler = &signalDelRadio;
+	sigaction(SIGUSR2, &sa, NULL);
 
 	/* connect to radio server, wait/reconnect if server is down */
 	radfd = connectRadioSrv(&radsin);
@@ -825,7 +893,9 @@ int main(int argc, char *argv[])
 
 	/* function loop - never ends, send signal to exit */
 	for(;;) {
-		msglen = recv(radfd, radbuf, RADBUF_SIZE, 0);
+		do
+		  msglen = recv(radfd, radbuf, RADBUF_SIZE, 0);
+		while (msglen == -1 && errno == EINTR);
 		if (msglen == -1) {
 			close(radfd);
 			radfd = connectRadioSrv(&radsin);
