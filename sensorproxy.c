@@ -27,6 +27,7 @@
  *    temp/{cur,min,max,unit} - temperature in Celsius, signed integer (with +/-)
  *    temp/trend - temperature trend calculated by device ('\', '_', '/')
  *    humid/{cur,min,max,unit} - air humidity in percent, integer [0-100]
+ *    index - index in table
  *
  *  For I2C (locally connected) sensors:
  *
@@ -35,6 +36,11 @@
  *    timestamp - timestamp as seconds.miliseconds
  *    interval - probe interval in ms
  *    {temp,humid,press,light}/{cur,min,max,unit} - values
+ *    index - index in table
+ *
+ *  NOTE 0: device section ALWAYS starts with 'timestamp' value
+ *  NOTE 1: device section ALWAYS ends with 'index' attribute
+ *          that may serve as a marker that sensor info is complete
  *
  *  Execution flow:
  *  + main thread listens to radio server and updates sensor list
@@ -74,7 +80,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.94 (radio only) server"
+#define BANNER			"SensorProxy v0.95 (radio only) server"
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
 #define SERVER_PORT		5444
 #define SERVER_ADDR		"0.0.0.0"
@@ -393,12 +399,13 @@ int formatMessage(char *buf, size_t len)
 				bufptr += sprintf(bufptr, "%s/temp/min=%+.1lf\n", dbuf, dhs->temp.min);
 				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dhs->temp.cur);
 				bufptr += sprintf(bufptr, "%s/temp/max=%+.1lf\n", dbuf, dhs->temp.max);
-				bufptr += sprintf(bufptr, "%s/temp/unit=\"%s\"\n", dbuf, dhs->temp.unit);
-				bufptr += sprintf(bufptr, "%s/temp/trend=\"%c\"\n", dbuf, trend[dhs->trend]);
+				bufptr += sprintf(bufptr, "%s/temp/unit=%s\n", dbuf, dhs->temp.unit);
+				bufptr += sprintf(bufptr, "%s/temp/trend=%c\n", dbuf, trend[dhs->trend]);
 				bufptr += sprintf(bufptr, "%s/humid/min=%d\n", dbuf, dhs->humid.min);
 				bufptr += sprintf(bufptr, "%s/humid/cur=%d\n", dbuf, dhs->humid.cur);
 				bufptr += sprintf(bufptr, "%s/humid/max=%d\n", dbuf, dhs->humid.max);
-				bufptr += sprintf(bufptr, "%s/humid/unit=\"%s\"\n", dbuf, dhs->humid.unit);
+				bufptr += sprintf(bufptr, "%s/humid/unit=%s\n", dbuf, dhs->humid.unit);
+				bufptr += sprintf(bufptr, "%s/index=%d\n", dbuf, i);
 			}
 			else
 				continue;
@@ -894,7 +901,7 @@ int main(int argc, char *argv[])
 	/* function loop - never ends, send signal to exit */
 	for(;;) {
 		do
-		  msglen = recv(radfd, radbuf, RADBUF_SIZE, 0);
+			msglen = recv(radfd, radbuf, RADBUF_SIZE, 0);
 		while (msglen == -1 && errno == EINTR);
 		if (msglen == -1) {
 			close(radfd);
