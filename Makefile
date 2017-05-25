@@ -9,7 +9,8 @@ PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
 	power433send power433control bh1750_test env_mon ssd1306_test \
 	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer \
-	radio433sniffer radio433daemon radio433client sensorproxy
+	radio433sniffer radio433daemon radio433client sensorproxy \
+	net_env_mon
 
 BUILDSTAMP = $(shell echo `date '+%Y%m%d-git@'``git log --oneline -1 | cut -d' ' -f1`)
 
@@ -198,8 +199,15 @@ radio433daemon:	radio433daemon.c radio433_lib.o radio433_dev.o
 radio433client:	radio433client.c radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
+##################################
+# Networked environment monitors #
+##################################
+
 sensorproxy:	sensorproxy.c radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS) -pthread -DBUILDSTAMP=\"$(BUILDSTAMP)\"
+
+net_env_mon:	net_env_mon.c
+	$(CC) -o $@ $^ $(CFLAGS) -lncurses
 
 ##################
 # Other programs #
