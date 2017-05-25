@@ -578,6 +578,10 @@ int main(int argc, char *argv[])
 	for(;;) {
 		clfd = connectServer(&spxsin);
 		if (clfd >= 0) {
+			memset(&hyuw77_dptr, 0, sizeof(struct hyuw77_dataptr));
+			memset(&htu21d_dptr, 0, sizeof(struct htu21d_dataptr));
+			memset(&bmp180_dptr, 0, sizeof(struct bmp180_dataptr));
+			memset(&bh1750_dptr, 0, sizeof(struct bh1750_dataptr));
 			msglen = recv(clfd, buf, RCVBUF_SIZE, 0);
 			if (msglen > 0) {
 				bufptrn = buf;
