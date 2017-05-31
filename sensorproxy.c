@@ -74,16 +74,23 @@
 #include <linux/limits.h>
 #include <fcntl.h>
 
+#include <wiringPi.h>
+#include <wiringPiI2C.h>
+
 #include "radio433_dev.h"
+#include "htu21d_lib.h"
+#include "bmp180_lib.h"
+#include "bh1750_lib.h"
 
 /* *************** */
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.95 (radio only) server"
+#define BANNER			"SensorProxy v0.96 (radio+i2c) server"
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
 #define SERVER_PORT		5444
 #define SERVER_ADDR		"0.0.0.0"
+#define RPI3I2C_BUS		1
 #define RADMSG_SIZE		128	/* radio daemon message size */
 #define RADBUF_SIZE		(RADMSG_SIZE * 8)
 #define BUFFER_SIZE		4096	/* output buffer size */
@@ -112,6 +119,9 @@
 
 /* Labels */
 #define SL_HYUWSSENZOR77TH	"hyuws77th"
+#define SL_HTU21D		"htu21d"
+#define SL_BMP180		"bmp180"
+#define SL_BH1750		"bh1750"
 
 /* Sensor bus */
 #define SB_NULL			0
@@ -170,6 +180,7 @@ struct radioentry {
 
 struct i2centry {
 	int bus, id;
+	int fd;
 };
 
 struct datahyuws77th {
@@ -191,7 +202,7 @@ struct databmp180 {
 
 struct databh1750 {
 	struct i2centry i2c;
-	struct fvalentry lumin;
+	struct fvalentry light;
 };
 
 /* *************** */
@@ -307,11 +318,35 @@ int daemonize(void)
 /* Process shutdown */
 void endProcess(int status)
 {
+	int i;
+	struct sensorentry *s;
+	struct i2centry *c;
+
 	unlink(pidfname);
 	if (clntrun)
 		pthread_cancel(clntthread);
-	if (i2cdelay)
+	if (i2cdelay) {
 		pthread_cancel(i2cthread);
+		sem_wait(&sensem);
+		for(i = 0; i < MAX_SENSORS; i++) {
+			s = &senstbl[i];
+			if (s->bus == SB_I2C) {
+				c = (struct i2centry *)(s->data);
+				if (c->id == HTU21D_I2C_ADDR) {
+					HTU21D_softReset(c->fd);
+					close(c->fd);
+				} else if (c->id == BMP180_I2C_ADDR) {
+					BMP180_softReset(c->fd);
+					close(c->fd);
+				} else if (c->id == BH1750_I2C_ADDR) {
+					BH1750_softReset(c->fd);
+					BH1750_powerDown(c->fd);
+					close(c->fd);
+				}
+			}
+		}
+		sem_post(&sensem);
+	}
 	if (srvfd >= 0)
 		close(srvfd);
 	if (radfd >= 0)
@@ -370,7 +405,11 @@ int formatMessage(char *buf, size_t len)
 	char *bufptr;
 	struct sensorentry *s;
 	struct radioentry *r;
+	struct i2centry *c;
 	struct datahyuws77th *dhs;
+	struct datahtu21d *dht2;
+	struct databmp180 *dbm1;
+	struct databh1750 *dbh1;
 
         memset(buf, 0, len);
 	bufptr = buf;
@@ -384,7 +423,7 @@ int formatMessage(char *buf, size_t len)
 	for(i = 0; i < MAX_SENSORS; i++) {
 		s = &senstbl[i];
 		if (s->bus == SB_RADIO) {
-			r = (struct radioentry *)(s->data); /* radio begins every struct */
+			r = (struct radioentry *)(s->data); /* radio begins every struct here */
 			sprintf(dbuf, "/%s/%s@%d,%02X:%02X", busname[SB_RADIO],
 				s->label, r->ch, r->sysid, r->devid);
 			bufptr += sprintf(bufptr, "%s/timestamp=%lu.%03u\n",
@@ -406,11 +445,43 @@ int formatMessage(char *buf, size_t len)
 				bufptr += sprintf(bufptr, "%s/humid/max=%d\n", dbuf, dhs->humid.max);
 				bufptr += sprintf(bufptr, "%s/humid/unit=%s\n", dbuf, dhs->humid.unit);
 				bufptr += sprintf(bufptr, "%s/index=%d\n", dbuf, i);
-			}
-			else
+			} else
 				continue;
 		} else if (s->bus == SB_I2C) {
-		/* TODO: I2C */
+			c = (struct i2centry *)(s->data); /* i2c info begins every struct here */
+			sprintf(dbuf, "/%s/%s@%d,%02X", busname[SB_I2C],
+				s->label, c->bus, c->id);
+			bufptr += sprintf(bufptr, "%s/timestamp=%lu.%03u\n",
+					  dbuf, s->tsec, s->tmsec);
+			bufptr += sprintf(bufptr, "%s/interval=%d\n", dbuf, s->interval);
+			if (c->id == HTU21D_I2C_ADDR) {
+				dht2 = (struct datahtu21d *)(s->data);
+				bufptr += sprintf(bufptr, "%s/humid/min=%.1lf\n", dbuf, dht2->humid.min);
+				bufptr += sprintf(bufptr, "%s/humid/cur=%.1lf\n", dbuf, dht2->humid.cur);
+				bufptr += sprintf(bufptr, "%s/humid/max=%.1lf\n", dbuf, dht2->humid.max);
+				bufptr += sprintf(bufptr, "%s/humid/unit=%s\n", dbuf, dht2->humid.unit);
+				bufptr += sprintf(bufptr, "%s/temp/min=%+.1lf\n", dbuf, dht2->temp.min);
+				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dht2->temp.cur);
+				bufptr += sprintf(bufptr, "%s/temp/max=%+.1lf\n", dbuf, dht2->temp.max);
+				bufptr += sprintf(bufptr, "%s/temp/unit=%s\n", dbuf, dht2->temp.unit);
+			} else if (c->id == BMP180_I2C_ADDR) {
+				dbm1 = (struct databmp180 *)(s->data);
+				bufptr += sprintf(bufptr, "%s/press/min=%.1lf\n", dbuf, dbm1->press.min);
+				bufptr += sprintf(bufptr, "%s/press/cur=%.1lf\n", dbuf, dbm1->press.cur);
+				bufptr += sprintf(bufptr, "%s/press/max=%.1lf\n", dbuf, dbm1->press.max);
+				bufptr += sprintf(bufptr, "%s/press/unit=%s\n", dbuf, dbm1->press.unit);
+				bufptr += sprintf(bufptr, "%s/temp/min=%+.1lf\n", dbuf, dbm1->temp.min);
+				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dbm1->temp.cur);
+				bufptr += sprintf(bufptr, "%s/temp/max=%+.1lf\n", dbuf, dbm1->temp.max);
+				bufptr += sprintf(bufptr, "%s/temp/unit=%s\n", dbuf, dbm1->temp.unit);
+			} else if (c->id == BH1750_I2C_ADDR) {
+				dbh1 = (struct databh1750 *)(s->data);
+				bufptr += sprintf(bufptr, "%s/light/min=%.1lf\n", dbuf, dbh1->light.min);
+				bufptr += sprintf(bufptr, "%s/light/cur=%.1lf\n", dbuf, dbh1->light.cur);
+				bufptr += sprintf(bufptr, "%s/light/max=%.1lf\n", dbuf, dbh1->light.max);
+				bufptr += sprintf(bufptr, "%s/light/unit=%s\n", dbuf, dbh1->light.unit);
+			}
+			bufptr += sprintf(bufptr, "%s/index=%d\n", dbuf, i);
 		} else
 			continue;
 	}
@@ -435,13 +506,20 @@ int findFreeSlot(void)
 void sensorEntryDelete(int i)
 {
 	struct sensorentry *s;
+	struct i2centry *c;
 
 	if (i < 0 || i >= MAX_SENSORS)
 		return;
 
 	s = &senstbl[i];
-	if (s->data)
+	if (s->data) {
+		if (s->bus == SB_I2C) {
+			c = (struct i2centry *)(s->data);
+			if (c->fd >= 0)
+				close(c->fd);
+		}
 		free(s->data);
+	}
 	memset(s, 0, sizeof(struct sensorentry));
 }
 
@@ -486,18 +564,41 @@ void sensorResetMinMax(void)
 {
         int i;
         struct sensorentry *s;
+	struct i2centry *c;
         struct datahyuws77th *dhs;
+	struct datahtu21d *dht2;
+	struct databmp180 *dbm1;
+	struct databh1750 *dbh1;
 
-        sem_wait(&sensem);
-        for(i = 0; i < MAX_SENSORS; i++) {
-                s = &senstbl[i];
-                if (s->type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
-                        dhs = (struct datahyuws77th *)(s->data);
-                        dhs->temp.min = dhs->temp.cur;
-                        dhs->temp.max = dhs->temp.cur;
-                        dhs->humid.min = dhs->humid.cur;
-                        dhs->humid.max = dhs->humid.cur;
-                }
+	sem_wait(&sensem);
+	for(i = 0; i < MAX_SENSORS; i++) {
+		s = &senstbl[i];
+		if (s->type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
+			dhs = (struct datahyuws77th *)(s->data);
+			dhs->temp.min = dhs->temp.cur;
+			dhs->temp.max = dhs->temp.cur;
+			dhs->humid.min = dhs->humid.cur;
+			dhs->humid.max = dhs->humid.cur;
+		} else if (s->bus == SB_I2C) {
+			c = (struct i2centry *)(s->data);
+			if (c->id == HTU21D_I2C_ADDR) {
+				dht2 = (struct datahtu21d *)(s->data);
+				dht2->humid.min = dht2->humid.cur;
+				dht2->humid.max = dht2->humid.cur;
+				dht2->temp.min = dht2->temp.cur;
+				dht2->temp.max = dht2->temp.cur;
+			} else if (c->id == BMP180_I2C_ADDR) {
+				dbm1 = (struct databmp180 *)(s->data);
+				dbm1->press.min = dbm1->press.cur;
+				dbm1->press.max = dbm1->press.cur;
+				dbm1->temp.min = dbm1->temp.cur;
+				dbm1->temp.max = dbm1->temp.cur;
+			} else if (c->id == BH1750_I2C_ADDR) {
+				dbh1 = (struct databh1750 *)(s->data);
+				dbh1->light.min = dbh1->light.cur;
+				dbh1->light.max = dbh1->light.cur;
+			}
+		}
         }
         sem_post(&sensem);
 }
@@ -641,13 +742,206 @@ void *clientASCThread(void *arg)
 	}
 }
 
-/* TODO: I2C sensor reading thread */
+/* I2C sensor reading thread */
 void *i2cSensorThread(void *arg)
 {
 	sigset_t blkset;
+	int i;
+	struct timeval ts;
+        struct sensorentry *s;
+	struct i2centry *c;
+	struct datahtu21d *dht2;
+	struct databmp180 *dbm1;
+	struct databh1750 *dbh1;
+	double v0, v1;
 
 	sigfillset(&blkset);
 	pthread_sigmask(SIG_BLOCK, &blkset, NULL);
+
+	for(;;) {
+		sem_wait(&sensem);
+		for(i = 0; i < MAX_SENSORS; i++) {
+			s = &senstbl[i];
+			if (s->bus == SB_I2C) {
+				c = (struct i2centry *)(s->data);
+				if (c->id == HTU21D_I2C_ADDR) {
+					gettimeofday(&ts, NULL);
+					v0 = HTU21D_getHumidity(c->fd);
+					v1 = HTU21D_getTemperature(c->fd);
+					if (v0 < 0.0 || v1 < -45.0)
+						continue;
+					s->tsec = ts.tv_sec;
+					s->tmsec = ts.tv_usec / 1000;
+					dht2 = (struct datahtu21d *)(s->data);
+					dht2->humid.cur = v0;
+					dht2->humid.min = MIN(v0, dht2->humid.min);
+					dht2->humid.max = MAX(v0, dht2->humid.max);
+					dht2->temp.cur = v1;
+					dht2->temp.min = MIN(v1, dht2->temp.min);
+					dht2->temp.max = MAX(v1, dht2->temp.max);
+				} else if (c->id == BMP180_I2C_ADDR) {
+					gettimeofday(&ts, NULL);
+					v0 = BMP180_getPressureFP(c->fd, BMP180_OSS_MODE_UHR, &v1);
+					s->tsec = ts.tv_sec;
+					s->tmsec = ts.tv_usec / 1000;
+					dbm1 = (struct databmp180 *)(s->data);
+					dbm1->press.cur = v0;
+					dbm1->press.min = MIN(v0, dbm1->press.min);
+					dbm1->press.max = MAX(v0, dbm1->press.max);
+					dbm1->temp.cur = v1;
+					dbm1->temp.min = MIN(v1, dbm1->temp.min);
+					dbm1->temp.max = MAX(v1, dbm1->temp.max);
+				} else if (c->id == BH1750_I2C_ADDR) {
+					gettimeofday(&ts, NULL);
+					v0 = BH1750_getLx(c->fd);
+					s->tsec = ts.tv_sec;
+					s->tmsec = ts.tv_usec / 1000;
+					dbh1 = (struct databh1750 *)(s->data);
+					dbh1->light.cur = v0;
+					dbh1->light.min = MIN(v0, dbh1->light.min);
+					dbh1->light.max = MAX(v0, dbh1->light.max);
+				}
+			}
+		}
+		sem_post(&sensem);
+		sleep(i2cdelay);
+	}
+}
+
+/* Sensor initialization */
+int initHTU21D(int idx)
+{
+	int fd;
+	struct timeval ts;
+        struct sensorentry *s;
+	struct datahtu21d *dht2;
+	double h, t;
+
+	fd = wiringPiI2CSetup(HTU21D_I2C_ADDR);
+	if (fd < 0)
+		return -1;
+
+	/* soft reset, device starts in 12-bit humidity / 14-bit temperature */
+	HTU21D_softReset(fd);
+
+	/* initialize structure */
+	do {
+		h = HTU21D_getHumidity(fd);
+		t = HTU21D_getTemperature(fd);
+	} while (h < 0.0 || t < -45.0);
+
+	gettimeofday(&ts, NULL);
+	s = &senstbl[idx];
+	s->tsec = ts.tv_sec;
+	s->tmsec = ts.tv_usec / 1000;
+	s->interval = i2cdelay * 1000;
+	s->bus = SB_I2C;
+	s->type = HTU21D_I2C_ADDR;
+	strncpy(s->label, SL_HTU21D, SENSOR_LABEL);
+	s->data = malloc(sizeof(struct datahtu21d));
+	dht2 = (struct datahtu21d *)(s->data);
+	dht2->i2c.bus = RPI3I2C_BUS;
+	dht2->i2c.id = HTU21D_I2C_ADDR;
+	dht2->i2c.fd = fd;
+	dht2->humid.cur = h;
+	dht2->humid.min = h;
+	dht2->humid.max = h;
+	strncpy(dht2->humid.unit, "%", UNIT_LABEL);
+	dht2->temp.cur = t;
+	dht2->temp.min = t;
+	dht2->temp.max = t;
+	strncpy(dht2->temp.unit, "C", UNIT_LABEL);
+
+	return fd;
+}
+
+int initBMP180(int idx)
+{
+	int fd;
+	struct timeval ts;
+        struct sensorentry *s;
+	struct databmp180 *dbm1;
+	double p, t;
+
+	fd = wiringPiI2CSetup(BMP180_I2C_ADDR);
+	if (fd < 0)
+		return -1;
+
+	/* soft reset */
+	BMP180_softReset(fd);
+
+        /* check if BMP180 responds */
+	if (!BMP180_isPresent(fd))
+		return -2;
+
+	BMP180_getCalibrationData(fd);
+
+	/* initialize structure */
+	p = BMP180_getPressureFP(fd, BMP180_OSS_MODE_UHR, &t);
+
+	gettimeofday(&ts, NULL);
+	s = &senstbl[idx];
+	s->tsec = ts.tv_sec;
+	s->tmsec = ts.tv_usec / 1000;
+	s->interval = i2cdelay * 1000;
+	s->bus = SB_I2C;
+	s->type = BMP180_I2C_ADDR;
+	strncpy(s->label, SL_BMP180, SENSOR_LABEL);
+	s->data = malloc(sizeof(struct databmp180));
+	dbm1 = (struct databmp180 *)(s->data);
+	dbm1->i2c.bus = RPI3I2C_BUS;
+	dbm1->i2c.id = BMP180_I2C_ADDR;
+	dbm1->i2c.fd = fd;
+	dbm1->press.cur = p;
+	dbm1->press.min = p;
+	dbm1->press.max = p;
+	strncpy(dbm1->press.unit, "hPa", UNIT_LABEL);
+	dbm1->temp.cur = t;
+	dbm1->temp.min = t;
+	dbm1->temp.max = t;
+	strncpy(dbm1->temp.unit, "C", UNIT_LABEL);
+
+	return fd;
+}
+
+int initBH1750(int idx)
+{
+	int fd;
+	struct timeval ts;
+        struct sensorentry *s;
+	struct databh1750 *dbh1;
+	double l;
+
+	fd = wiringPiI2CSetup(BH1750_I2C_ADDR);
+	if (fd < 0)
+		return -1;
+
+	BH1750_powerOn(fd);
+	BH1750_softReset(fd);
+	BH1750_setMode(fd, BH1750_MODE_CONT, BH1750_MODE_RES_H2);
+
+	/* initialize structure */
+	l = BH1750_getLx(fd);
+
+	gettimeofday(&ts, NULL);
+	s = &senstbl[idx];
+	s->tsec = ts.tv_sec;
+	s->tmsec = ts.tv_usec / 1000;
+	s->interval = i2cdelay * 1000;
+	s->bus = SB_I2C;
+	s->type = BH1750_I2C_ADDR;
+	strncpy(s->label, SL_BH1750, SENSOR_LABEL);
+	s->data = malloc(sizeof(struct databh1750));
+	dbh1 = (struct databh1750 *)(s->data);
+	dbh1->i2c.bus = RPI3I2C_BUS;
+	dbh1->i2c.id = BH1750_I2C_ADDR;
+	dbh1->i2c.fd = fd;
+	dbh1->light.cur = l;
+	dbh1->light.min = l;
+	dbh1->light.max = l;
+	strncpy(dbh1->light.unit, "lx", UNIT_LABEL);
+
+	return fd;
 }
 
 /* ************ */
@@ -667,6 +961,7 @@ int main(int argc, char *argv[])
 	char *msgptr, *msgend;
 	struct sigaction sa;
 	struct radmsg rm;
+	int idx;
 
 	/* get process name */
 	strncpy(progname, basename(argv[0]), PATH_MAX);
@@ -891,9 +1186,26 @@ int main(int argc, char *argv[])
 
 	/* start I2C sensor read thread */
 	if (i2cdelay) {
-		/* TODO: initialize I2C sensors */
+		idx = 0;
+		wiringPiSetupGpio();
+		if (initHTU21D(idx) >= 0) {
+			logprintf(logfd, LOG_NOTICE, "HTU21D I2C sensor at %d,0x%02X added to monitor\n",
+				  RPI3I2C_BUS, HTU21D_I2C_ADDR);
+			idx++;
+		}
+		if (initBMP180(idx) >= 0) {
+			logprintf(logfd, LOG_NOTICE, "BMP180 I2C sensor at %d,0x%02X added to monitor\n",
+				  RPI3I2C_BUS, BMP180_I2C_ADDR);
+			idx++;
+		}
+		if (initBH1750(idx) >= 0) {
+			logprintf(logfd, LOG_NOTICE, "BH1750 I2C sensor at %d,0x%02X added to monitor\n",
+				  RPI3I2C_BUS, BH1750_I2C_ADDR);
+			idx++;
+		}
 		if (pthread_create(&i2cthread, NULL, i2cSensorThread, NULL)) {
 			logprintf(logfd, LOG_WARN, "cannot start I2C thread, skipping I2C devices\n");
+			memset(senstbl, 0, MAX_SENSORS * sizeof(struct sensorentry));
 			i2cdelay = 0;
 		}
 	}

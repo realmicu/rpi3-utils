@@ -203,8 +203,8 @@ radio433client:	radio433client.c radio433_dev.o
 # Networked environment monitors #
 ##################################
 
-sensorproxy:	sensorproxy.c radio433_dev.o
-	$(CC) -o $@ $^ $(CFLAGS) -pthread -DBUILDSTAMP=\"$(BUILDSTAMP)\"
+sensorproxy:	sensorproxy.c radio433_dev.o htu21d_lib.o bmp180_lib.o bh1750_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) -lwiringPi -pthread -DBUILDSTAMP=\"$(BUILDSTAMP)\"
 
 net_env_mon:	net_env_mon.c
 	$(CC) -o $@ $^ $(CFLAGS) -lncurses
