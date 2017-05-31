@@ -136,7 +136,7 @@ const char *busname[] = { "(null)", "radio", "i2c" };
 const char trend[3] = { '_', '/', '\\' };
 extern char *optarg;
 extern int optind, opterr, optopt;
-volatile int debugflag, i2cdelay, clntrun;
+volatile int debugflag, i2cdelay, clntrun, i2ctrun;
 volatile int mrstflag, rdelflag;
 pthread_t clntthread, i2cthread;
 pid_t procpid;
@@ -325,7 +325,7 @@ void endProcess(int status)
 	unlink(pidfname);
 	if (clntrun)
 		pthread_cancel(clntthread);
-	if (i2cdelay) {
+	if (i2ctrun) {
 		pthread_cancel(i2cthread);
 		sem_wait(&sensem);
 		for(i = 0; i < MAX_SENSORS; i++) {
@@ -981,6 +981,7 @@ int main(int argc, char *argv[])
 	srvfd = -1;
 	radfd = -1;
 	clntrun = 0;
+	i2ctrun = 0;
 	mrstflag = 0;
 	rdelflag = 0;
 
@@ -1207,7 +1208,8 @@ int main(int argc, char *argv[])
 			logprintf(logfd, LOG_WARN, "cannot start I2C thread, skipping I2C devices\n");
 			memset(senstbl, 0, MAX_SENSORS * sizeof(struct sensorentry));
 			i2cdelay = 0;
-		}
+		} else
+			i2ctrun = 1;
 	}
 
 	/* function loop - never ends, send signal to exit */
