@@ -180,7 +180,7 @@ void printField(int y, int x, int bold, int just, const char *fmt, ...)
 	memset(ibuf, 0, MAX_FIELD_LEN + 1);
 
 	va_start(ap, fmt);
-	vsnprintf(ibuf, MAX_FIELD_LEN, fmt, ap);
+	vsnprintf(ibuf, MAX_FIELD_LEN + 1, fmt, ap);
 	va_end(ap);
 
 	memset(obuf, ' ', MAX_FIELD_LEN);
@@ -525,6 +525,7 @@ int main(int argc, char *argv[])
 	int clfd, msglen;
 	char *bufptr, *bufptrn;
 	char buf[RCVBUF_SIZE];
+	char spcbuf[MAX_FIELD_LEN + 1];
 	const char *htu21d_labels[2] = { "Humidity", "Temperature" };
 	const char *bmp180_labels[2] = { "Pressure", "Temperature" };
 	const char *bh1750_labels[1] = { "Luminance" };
@@ -533,6 +534,11 @@ int main(int argc, char *argv[])
 	struct htu21d_dataptr htu21d_dptr;
 	struct bmp180_dataptr bmp180_dptr;
 	struct bh1750_dataptr bh1750_dptr;
+	int hyuw77_ok, htu21d_ok, bmp180_ok, bh1750_ok;
+
+	/* clear field */
+	memset(spcbuf, ' ', MAX_FIELD_LEN);
+	spcbuf[MAX_FIELD_LEN] = 0;
 
 	/* get process name */
 	strncpy(progname, basename(argv[0]), PATH_MAX);
@@ -576,6 +582,10 @@ int main(int argc, char *argv[])
 
 	/* main loop */
 	for(;;) {
+		hyuw77_ok = 0;
+		htu21d_ok = 0;
+		bmp180_ok = 0;
+		bh1750_ok = 0;
 		clfd = connectServer(&spxsin);
 		if (clfd >= 0) {
 			memset(&hyuw77_dptr, 0, sizeof(struct hyuw77_dataptr));
@@ -607,6 +617,7 @@ int main(int argc, char *argv[])
 								   hyuw77_dptr.temptrnd);
 							printField(17, COLMAX, 0, 0, "BatLow: %s",
 								   hyuw77_dptr.batlow);
+							hyuw77_ok = 1;
 						}
 					} else if (strstr(bufptr, "/i2c/htu21d@")) {
 						if (fillData_htu21d(bufptr, &htu21d_dptr)) {
@@ -622,6 +633,7 @@ int main(int argc, char *argv[])
 								   htu21d_dptr.tempcur, htu21d_dptr.tempunit);
 							printField(5, COLMAX, 0, 1, "%s %s",
 								   htu21d_dptr.tempmax, htu21d_dptr.tempunit);
+							htu21d_ok = 1;
 						}
 					} else if (strstr(bufptr, "/i2c/bmp180@")) {
 						if (fillData_bmp180(bufptr, &bmp180_dptr)) {
@@ -637,6 +649,7 @@ int main(int argc, char *argv[])
 								   bmp180_dptr.tempcur, bmp180_dptr.tempunit);
 							printField(9, COLMAX, 0, 1, "%s %s",
 								   bmp180_dptr.tempmax, bmp180_dptr.tempunit);
+							bmp180_ok = 1;
 						}
 					} else if (strstr(bufptr, "/i2c/bh1750@")) {
 						if (fillData_bh1750(bufptr, &bh1750_dptr)) {
@@ -646,6 +659,7 @@ int main(int argc, char *argv[])
 								   bh1750_dptr.lightcur, bh1750_dptr.lightunit);
 							printField(11, COLMAX, 0, 1, "%s %s",
 								   bh1750_dptr.lightmax, bh1750_dptr.lightunit);
+							bh1750_ok = 1;
 						}
 					}
 				} while (bufptrn != NULL && bufptrn - buf <= msglen);
@@ -653,6 +667,47 @@ int main(int argc, char *argv[])
 			move(lastline + 1, 0);
 			refresh();
 			close(clfd); /* should be closed by remote end by now */
+		}
+
+		if (!hyuw77_ok) {
+			mvaddstr(13, COLMIN, spcbuf);
+			mvaddstr(13, COLNOW, spcbuf);
+			mvaddstr(13, COLMAX, spcbuf);
+			mvaddstr(15, COLMIN, spcbuf);
+			mvaddstr(15, COLNOW, spcbuf);
+			mvaddstr(15, COLMAX, spcbuf);
+			mvaddstr(17, COLMIN, spcbuf);
+			mvaddstr(17, COLNOW, spcbuf);
+			mvaddstr(17, COLMAX, spcbuf);
+		}
+
+		if (!htu21d_ok) {
+			mvaddstr(3, COLMIN, spcbuf);
+			mvaddstr(3, COLNOW, spcbuf);
+			mvaddstr(3, COLMAX, spcbuf);
+			mvaddstr(5, COLMIN, spcbuf);
+			mvaddstr(5, COLNOW, spcbuf);
+			mvaddstr(5, COLMAX, spcbuf);
+		}
+
+		if (!bmp180_ok) {
+			mvaddstr(7, COLMIN, spcbuf);
+			mvaddstr(7, COLNOW, spcbuf);
+			mvaddstr(7, COLMAX, spcbuf);
+			mvaddstr(9, COLMIN, spcbuf);
+			mvaddstr(9, COLNOW, spcbuf);
+			mvaddstr(9, COLMAX, spcbuf);
+		}
+
+		if (!bh1750_ok) {
+			mvaddstr(11, COLMIN, spcbuf);
+			mvaddstr(11, COLNOW, spcbuf);
+			mvaddstr(11, COLMAX, spcbuf);
+		}
+
+		if (!hyuw77_ok || !htu21d_ok || !bmp180_ok || !bh1750_ok) {
+			move(lastline + 1, 0);
+			refresh();
 		}
 
 		if (cntsec)
