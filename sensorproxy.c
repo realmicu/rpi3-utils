@@ -100,7 +100,7 @@
 #define SENSOR_LABEL		16
 #define BUS_LABEL		8
 #define UNIT_LABEL		4
-#define SENSOR_ENTRY_TTL	2	/* failed communication limit */
+#define SENSOR_ENTRY_TTL	4	/* failed communication limit */
 #define RADMSG_HDR		"<RX>"
 #define RADMSG_EOT		"<ZZ>"
 #define TXTMSG_HDR		"BEGIN"
@@ -327,25 +327,29 @@ void endProcess(int status)
 		pthread_cancel(clntthread);
 	if (i2ctrun) {
 		pthread_cancel(i2cthread);
-		sem_wait(&sensem);
+		/* we do not use semaphore here, as both threads
+		 * should finish by now, and furthermore one of
+		 * them can block semaphore before being interrupted */
 		for(i = 0; i < MAX_SENSORS; i++) {
 			s = &senstbl[i];
 			if (s->bus == SB_I2C) {
 				c = (struct i2centry *)(s->data);
-				if (c->id == HTU21D_I2C_ADDR) {
+				if (c->id == HTU21D_I2C_ADDR &&
+				    c->fd >= 0) {
 					HTU21D_softReset(c->fd);
 					close(c->fd);
-				} else if (c->id == BMP180_I2C_ADDR) {
+				} else if (c->id == BMP180_I2C_ADDR &&
+					   c->fd >= 0) {
 					BMP180_softReset(c->fd);
 					close(c->fd);
-				} else if (c->id == BH1750_I2C_ADDR) {
+				} else if (c->id == BH1750_I2C_ADDR &&
+					   c->fd >= 0) {
 					BH1750_softReset(c->fd);
 					BH1750_powerDown(c->fd);
 					close(c->fd);
 				}
 			}
 		}
-		sem_post(&sensem);
 	}
 	if (srvfd >= 0)
 		close(srvfd);
@@ -543,7 +547,7 @@ void sensorRadioRemoveAll(void)
  * than SENSOR_ENTRY_TTL intervals */
 void sensorTableClean(void)
 {
-	int i;
+	int i, l;
 	struct timeval t;
 	struct sensorentry *s;
 
@@ -551,10 +555,15 @@ void sensorTableClean(void)
 	sem_wait(&sensem);
 	for(i = 0; i < MAX_SENSORS; i++) {
 		s = &senstbl[i];
-		if (s->type)
-			if (TSDIFF(t.tv_sec, t.tv_usec / 1000,
-			    s->tsec, s->tmsec) > SENSOR_ENTRY_TTL * s->interval)
+		if (s->type) {
+			l = TSDIFF(t.tv_sec, t.tv_usec / 1000, s->tsec, s->tmsec);
+			if (l > SENSOR_ENTRY_TTL * s->interval) {
+				logprintf(logfd, LOG_NOTICE,
+					  "removing sensor \"%s\" [%d] due to timeout (%l ms)\n",
+					  s->label, i, l);
 				sensorEntryDelete(i);
+			}
+		}
 	}
 	sem_post(&sensem);
 }
@@ -675,6 +684,9 @@ void sensorRadioUpdate(struct radmsg *rm)
 		dhs->humid.min = humid;
 		dhs->humid.max = humid;
 		strncpy(dhs->humid.unit, "%", UNIT_LABEL);
+		logprintf(logfd, LOG_NOTICE,
+			  "radio sensor \"%s\" [%d] added to monitor\n",
+			  s->label, i);
 	} else {
 		s = &senstbl[i];
 		if (rm->type == RADIO433_DEVICE_HYUWSSENZOR77TH)
@@ -768,7 +780,8 @@ void *i2cSensorThread(void *arg)
 					gettimeofday(&ts, NULL);
 					v0 = HTU21D_getHumidity(c->fd);
 					v1 = HTU21D_getTemperature(c->fd);
-					if (v0 < 0.0 || v1 < -45.0)
+					if (v0 < 0.0 || v0 > 100.0 ||
+					    v1 < -40.0 || v1 > 125.0)
 						continue;
 					s->tsec = ts.tv_sec;
 					s->tmsec = ts.tv_usec / 1000;
@@ -779,9 +792,15 @@ void *i2cSensorThread(void *arg)
 					dht2->temp.cur = v1;
 					dht2->temp.min = MIN(v1, dht2->temp.min);
 					dht2->temp.max = MAX(v1, dht2->temp.max);
+					if (debugflag)
+						logprintf(logfd, LOG_DEBUG,
+							  "sensor \"%s\" [%d] read complete (h=%.1lf, t=%.1lf)\n",
+							  s->label, i, v0, v1);
 				} else if (c->id == BMP180_I2C_ADDR) {
 					gettimeofday(&ts, NULL);
 					v0 = BMP180_getPressureFP(c->fd, BMP180_OSS_MODE_UHR, &v1);
+					if (v0 < 300.0 || v0 > 1100.0)
+						continue;
 					s->tsec = ts.tv_sec;
 					s->tmsec = ts.tv_usec / 1000;
 					dbm1 = (struct databmp180 *)(s->data);
@@ -791,15 +810,25 @@ void *i2cSensorThread(void *arg)
 					dbm1->temp.cur = v1;
 					dbm1->temp.min = MIN(v1, dbm1->temp.min);
 					dbm1->temp.max = MAX(v1, dbm1->temp.max);
+					if (debugflag)
+						logprintf(logfd, LOG_DEBUG,
+							  "sensor \"%s\" [%d] read complete (p=%.1lf, t=%.1lf)\n",
+							  s->label, i, v0, v1);
 				} else if (c->id == BH1750_I2C_ADDR) {
 					gettimeofday(&ts, NULL);
 					v0 = BH1750_getLx(c->fd);
+					if (v0 < 0.0)
+						continue;
 					s->tsec = ts.tv_sec;
 					s->tmsec = ts.tv_usec / 1000;
 					dbh1 = (struct databh1750 *)(s->data);
 					dbh1->light.cur = v0;
 					dbh1->light.min = MIN(v0, dbh1->light.min);
 					dbh1->light.max = MAX(v0, dbh1->light.max);
+					if (debugflag)
+						logprintf(logfd, LOG_DEBUG,
+							  "sensor \"%s\" [%d] read complete (l=%.1lf)\n",
+							  s->label, i, v0);
 				}
 			}
 		}
@@ -828,7 +857,7 @@ int initHTU21D(int idx)
 	do {
 		h = HTU21D_getHumidity(fd);
 		t = HTU21D_getTemperature(fd);
-	} while (h < 0.0 || t < -45.0);
+	} while (h < 0.0 || h > 100.0 || t < -40.0 || t > 125.0);
 
 	gettimeofday(&ts, NULL);
 	s = &senstbl[idx];
@@ -1190,18 +1219,18 @@ int main(int argc, char *argv[])
 		idx = 0;
 		wiringPiSetupGpio();
 		if (initHTU21D(idx) >= 0) {
-			logprintf(logfd, LOG_NOTICE, "HTU21D I2C sensor at %d,0x%02X added to monitor\n",
-				  RPI3I2C_BUS, HTU21D_I2C_ADDR);
+			logprintf(logfd, LOG_NOTICE, "htu21d I2C sensor at %d,0x%02X [%d] added to monitor\n",
+				  RPI3I2C_BUS, HTU21D_I2C_ADDR, idx);
 			idx++;
 		}
 		if (initBMP180(idx) >= 0) {
-			logprintf(logfd, LOG_NOTICE, "BMP180 I2C sensor at %d,0x%02X added to monitor\n",
-				  RPI3I2C_BUS, BMP180_I2C_ADDR);
+			logprintf(logfd, LOG_NOTICE, "bmp180 I2C sensor at %d,0x%02X [%d] added to monitor\n",
+				  RPI3I2C_BUS, BMP180_I2C_ADDR, idx);
 			idx++;
 		}
 		if (initBH1750(idx) >= 0) {
-			logprintf(logfd, LOG_NOTICE, "BH1750 I2C sensor at %d,0x%02X added to monitor\n",
-				  RPI3I2C_BUS, BH1750_I2C_ADDR);
+			logprintf(logfd, LOG_NOTICE, "bh1750 I2C sensor at %d,0x%02X [%d] added to monitor\n",
+				  RPI3I2C_BUS, BH1750_I2C_ADDR, idx);
 			idx++;
 		}
 		if (pthread_create(&i2cthread, NULL, i2cSensorThread, NULL)) {
