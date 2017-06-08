@@ -17,6 +17,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdarg.h>
+#include <linux/limits.h>  /* for NGROUPS_MAX */
+#include <pwd.h>	/* for getpwnam_r() */
+#include <grp.h>	/* for getgrouplist() and setgroups() */
 #ifdef HAS_CPUFREQ
 #include <cpufreq.h>
 #endif
@@ -44,6 +47,8 @@ extern int optind, opterr, optopt;
    <RX>1490084239.165;128;4;33000;0x0201;36;0x00000004A03608F9;<ZZ>
  */
 
+#define MAX_USERNAME		32
+#define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
 #define LED_BLINK_MS		100	/* minimal LED blinking time in ms */
 #define SERVER_ADDR		"0.0.0.0" /* default server address */
@@ -69,12 +74,11 @@ int clntfd[MAX_CLIENTS];
 /* Show help */
 void help(char *progname)
 {
-	printf("Usage:\n\t%s -g gpio [-v] [-u uid:gid] [-l ledgpio:ledact] [-h ipaddr] [-p tcpport]\n\n", progname);
+	printf("Usage:\n\t%s -g gpio [-v] [-u user] [-l ledgpio:ledact] [-h ipaddr] [-p tcpport]\n\n", progname);
 	puts("Where:");
 	puts("\tgpio\t - GPIO pin with external RF receiver data (mandatory)");
 	puts("\t-v\t - be verbose, print radio activity and network connections (optional)");
-	puts("\tuid\t - user ID to switch to (optional)");
-	puts("\tgid\t - user group ID to switch to (optional)");
+	puts("\tuser\t - name of the user to switch to (optional)");
 	puts("\tledgpio\t - GPIO pin with LED to signal packet receiving (optional)");
 	puts("\tledact\t - LED activity: 0 for active low, 1 for active high (optional)");
 	puts("\tipaddr\t - IPv4 address to listen on (optional, default any = 0.0.0.0)");
@@ -99,13 +103,35 @@ void logprintf(FILE *fd, const char *level, const char *fmt, ...)
 }
 
 /* drop super-user privileges */
-int dropRootPriv(int newuid, int newgid)
+int dropRootPriv(const char *username, uid_t *uid, gid_t *gid)
 {
-	/* start with GID */
-	if (setresgid(newgid, newgid, newgid))
+	struct passwd pw, *pwptr;
+	char buf[1024];
+	gid_t grps[MAX_NGROUPS];
+	int ngrp;
+
+	/* get user & group ID */
+	errno = 0;
+	pwptr = NULL;
+	if (getpwnam_r(username, &pw, buf, 1024, &pwptr))
 		return -1;
-	if (setresuid(newuid, newuid, newuid))
+	if (pwptr == NULL) {
+		errno = EUSERS;
 		return -1;
+	}
+	/* set supplemental groups */
+	ngrp = MAX_NGROUPS;
+	if (getgrouplist(username, pw.pw_gid, grps, &ngrp) < 0)
+		return -1;
+	if (setgroups(ngrp, grps))
+		return -1;
+	/* start with GID then UID */
+	if (setresgid(pw.pw_gid, pw.pw_gid, pw.pw_gid))
+		return -1;
+	if (setresuid(pw.pw_uid, pw.pw_uid, pw.pw_uid))
+		return -1;
+	*uid = pw.pw_uid;
+	*gid = pw.pw_gid;
 	return 0;
 }
 
@@ -252,14 +278,16 @@ int main(int argc, char *argv[])
 {
 	struct timeval ts;
 	unsigned long long code;
-	int gpio, type, bits;
-	int opt, uid, gid;
+	int gpio, type, bits, opt;
+	uid_t uid;
+	gid_t gid;
 	int srvport;
 	char srvaddrstr[16];
 	struct sockaddr_in sinsrv;
 	int i, len;
 	int codelen, repeats, interval;
 	char buf[MAX_MSG_SIZE + 1];
+	char username[MAX_USERNAME + 1];
 
 	/* show help */
 	if (argc < 2) {
@@ -274,17 +302,19 @@ int main(int argc, char *argv[])
 	ledgpio = -1;
 	ledact = 1;
 	vflag = 0;
+	memset(username, 0, MAX_USERNAME + 1);
+	memset(srvaddrstr, 0, 16);
 	strncpy(srvaddrstr, SERVER_ADDR, 15);
 	srvport = SERVER_PORT;
 	while((opt = getopt(argc, argv, "vg:u:l:h:p:")) != -1) {
 		if (opt == 'g')
 			sscanf(optarg, "%d", &gpio);
 		else if (opt == 'u')
-			sscanf(optarg, "%d:%d", &uid, &gid);
+			strncpy(username, optarg, MAX_USERNAME);
 		else if (opt == 'l')
 			sscanf(optarg, "%d:%d", &ledgpio, &ledact);
 		else if (opt == 'h')
-			sscanf(optarg, "%15s", srvaddrstr);
+			strncpy(srvaddrstr, optarg, 15);
 		else if (opt == 'p')
 			sscanf(optarg, "%d", &srvport);
 		else if (opt == 'v')
@@ -293,6 +323,11 @@ int main(int argc, char *argv[])
 			help(argv[0]);
 			exit(EXIT_FAILURE);
 		}
+	}
+
+	if (getuid()) {
+		fputs("Must be run by root.\n", stderr);
+		exit(EXIT_FAILURE);
 	}
 
 	if (gpio < 0 || gpio > GPIO_PINS) {
@@ -346,15 +381,15 @@ int main(int argc, char *argv[])
 	}
 
 	/* drop privileges */
-	if (uid > 0 && gid > 0) {
-		if (dropRootPriv(uid, gid)) {
+	if (username[0]) {
+		if (dropRootPriv(username, &uid, &gid)) {
 			fprintf(stderr, "Unable to drop super-user privileges: %s\n",
 				strerror (errno));
 			exit(EXIT_FAILURE);
 		}
 		else
 			logprintf(stdout, LOG_NOTICE,
-				  "dropping super-user privileges, running as UID=%d GID=%d\n",
+				  "dropping super-user privileges, running as UID=%ld GID=%ld\n",
 				  uid, gid);
 	}
 
