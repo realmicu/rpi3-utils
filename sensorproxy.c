@@ -268,7 +268,7 @@ int connectRadioSrv(struct sockaddr_in *s)
 				  "connection broken with radio server %s port %d: %s\n",
 				  inet_ntoa(s->sin_addr), ntohs(s->sin_port),
 				  strerror(errno));
-			logprintf(logfd, LOG_WARN, "retrying in %d seconds...",
+			logprintf(logfd, LOG_WARN, "retrying in %d seconds...\n",
 				  RECONNECT_DELAY_SEC);
 			close(fd);
 			sleep(RECONNECT_DELAY_SEC);
