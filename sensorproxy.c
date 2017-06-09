@@ -559,7 +559,7 @@ void sensorTableClean(void)
 			l = TSDIFF(t.tv_sec, t.tv_usec / 1000, s->tsec, s->tmsec);
 			if (l > SENSOR_ENTRY_TTL * s->interval) {
 				logprintf(logfd, LOG_NOTICE,
-					  "removing sensor \"%s\" [%d] due to timeout (%l ms)\n",
+					  "removing sensor \"%s\" [%d] due to timeout (%lu ms)\n",
 					  s->label, i, l);
 				sensorEntryDelete(i);
 			}
