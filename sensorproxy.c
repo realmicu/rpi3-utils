@@ -1246,7 +1246,7 @@ int main(int argc, char *argv[])
 		do
 			msglen = recv(radfd, radbuf, RADBUF_SIZE, 0);
 		while (msglen == -1 && errno == EINTR);
-		if (msglen == -1) {
+		if (msglen <= 0) {
 			close(radfd);
 			radfd = connectRadioSrv(&radsin);
 			continue;
