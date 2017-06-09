@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
         	        fprintf(stderr, "Unable to connect to server: %s\n",
         	                strerror (errno));
 			if (waitflag) {
-				fprintf(stderr, "Retrying in %d seconds...",
+				fprintf(stderr, "Retrying in %d seconds...\n",
 					RECONNECT_DELAY_SEC);
 				sleep(RECONNECT_DELAY_SEC);
 				continue;
@@ -115,6 +115,9 @@ int main(int argc, char *argv[])
                 	fprintf(stderr, "Error receiving data from server: %s\n",
                         	strerror (errno));
                 	exit(EXIT_FAILURE);
+		} else if (!msglen) {
+			fputs("Server has closed connection.\n", stderr);
+			exit(EXIT_FAILURE);
 		}
 		/* check for start and stop strings */
 		if (strncmp(buf, MSG_HDR, 4) || strncmp(buf + msglen - 5, MSG_EOT, 4))
