@@ -19,7 +19,7 @@
  *
  *  /radio/hyuws77th@CHANNEL,SYSID:DEVID/PROPERTY
  *  where property can be:
- *    timestamp - timestamp as seconds.miliseconds
+ *    timestamp - timestamp as seconds.milliseconds
  *    interval - transmission interval in ms
  *    code - raw code in hex
  *    batlow - battery low indicator
@@ -33,7 +33,7 @@
  *
  *  /i2c/DEVICE@I2C_BUS,I2C_ID/PROPERTY
  *  where property can be:
- *    timestamp - timestamp as seconds.miliseconds
+ *    timestamp - timestamp as seconds.milliseconds
  *    interval - probe interval in ms
  *    {temp,humid,press,light}/{cur,min,max,unit} - values
  *    index - index in table

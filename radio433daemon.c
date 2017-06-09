@@ -34,10 +34,10 @@ extern int optind, opterr, optopt;
 
 /* Message format (semicolon-separated one line):
    header (<RX<)
-   timestamp - seconds.miliseconds - decimal
-   codetime - code length in miliseconds - decimal
+   timestamp - seconds.milliseconds - decimal
+   codetime - code length in milliseconds - decimal
    repeats - number of codes in single transmission - decimal
-   interval - time between transmissions in miliseconds - decimal
+   interval - time between transmissions in milliseconds - decimal
    type - hex - 32-bit value (with 0x prefix)
    bits - decimal
    data - hex - 64-bit value (with 0x prefix)
