@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sched.h>
 #include <semaphore.h>
 #include <pthread.h>
@@ -17,6 +18,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdarg.h>
+#include <fcntl.h>
 #include <linux/limits.h>  /* for NGROUPS_MAX */
 #include <pwd.h>	/* for getpwnam_r() */
 #include <grp.h>	/* for getgrouplist() and setgroups() */
@@ -47,6 +49,12 @@ extern int optind, opterr, optopt;
    <RX>1490084239.165;128;4;33000;0x0201;36;0x00000004A03608F9;<ZZ>
  */
 
+
+/* *************** */
+/* *  Constants  * */
+/* *************** */
+
+#define BANNER			"Radio433Daemon v0.98 server"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -57,12 +65,19 @@ extern int optind, opterr, optopt;
 #define MAX_CLIENTS		64	/* client limit */
 #define MSG_HDR			"<RX>"
 #define MSG_END			"<ZZ>"
+#define FILE_UMASK		(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+#define PID_DIR			"/var/run/"
+#define LOG_DEBUG		"debug"
 #define LOG_INFO		"info"
 #define LOG_NOTICE		"notice"
 #define LOG_WARN		"warn"
 #define LOG_ERROR		"error"
 
-int vflag;
+/* ********************** */
+/* *  Global variables  * */
+/* ********************** */
+
+volatile int debugflag, clntrun;
 sem_t blinksem;		/* signal LED that it should blink */
 pthread_t blinkthread;
 int ledgpio, ledact;
@@ -70,36 +85,61 @@ sem_t clientsem;	/* to synchronize access to client fd array */
 pthread_t clntaddthread;
 int srvsock;		/* server socket */
 int clntfd[MAX_CLIENTS];
+sem_t logsem;		/* log file semaphore */
+pid_t procpid;
+volatile int logfd;
+char progname[PATH_MAX + 1], logfname[PATH_MAX + 1], pidfname[PATH_MAX + 1];
+
+/* *************** */
+/* *  Functions  * */
+/* *************** */
 
 /* Show help */
-void help(char *progname)
+void help(void)
 {
-	printf("Usage:\n\t%s -g gpio [-v] [-u user] [-l ledgpio:ledact] [-h ipaddr] [-p tcpport]\n\n", progname);
+	printf("Usage:\n\t%s -g gpio [-u user] [-d | -l logfile] [-P pidfile] [-L gpio:act] [-h ipaddr] [-p tcpport]\n\n", progname);
 	puts("Where:");
-	puts("\tgpio\t - GPIO pin with external RF receiver data (mandatory)");
-	puts("\t-v\t - be verbose, print radio activity and network connections (optional)");
-	puts("\tuser\t - name of the user to switch to (optional)");
-	puts("\tledgpio\t - GPIO pin with LED to signal packet receiving (optional)");
-	puts("\tledact\t - LED activity: 0 for active low, 1 for active high (optional)");
-	puts("\tipaddr\t - IPv4 address to listen on (optional, default any = 0.0.0.0)");
-	puts("\ttcpport\t - TCP port to listen on (optional, default is 5433)");
+	puts("\t-g gpio     - GPIO pin with external RF receiver data (mandatory)");
+	puts("\t-u user     - name of the user to switch to (optional)");
+	puts("\t-d          - debug mode, stay foreground and show activity (optional)");
+	puts("\t-l logfile  - path to log file (optional, default is none)");
+	printf("\t-P pidfile  - path to PID file (optional, default is %s%s.pid)\n", PID_DIR, progname);
+	puts("\t-L g:a      - LED to signal packet receiving (optional, g is BCM GPIO number and a is 0/1 for active low/high)");
+	printf("\t-h ipaddr   - IPv4 address to listen on (optional, default %s)\n", SERVER_ADDR);
+	printf("\t-p tcpport  - TCP port to listen on (optional, default is %d)\n", SERVER_PORT);
+	puts("\nRecognized devices - Hyundai WS Senzor 77TH, Kemot Remote Power URZ1226 compatible");
+	puts("\nSignal actions: SIGHUP (log file truncate and reopen)\n");
 }
 
 /* Log line header */
-void logprintf(FILE *fd, const char *level, const char *fmt, ...)
+void logprintf(int fd, const char *level, const char *fmt, ...)
 {
         struct timeval ts;
         struct tm *tl;
 	va_list ap;
 
+	if (fd < 0)
+		return;
+	sem_wait(&logsem);
 	gettimeofday(&ts, NULL);
 	tl = localtime(&ts.tv_sec);
-	fprintf(fd, "%d-%02d-%02d %02d:%02d:%02d.%03u %s: ", 1900 + tl->tm_year,
-                tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
-                tl->tm_sec, ts.tv_usec / 1000, level);
+	dprintf(fd, "%d-%02d-%02d %02d:%02d:%02d.%03u %s[%d] %s: ",
+		1900 + tl->tm_year, tl->tm_mon + 1, tl->tm_mday,
+		tl->tm_hour, tl->tm_min, tl->tm_sec, ts.tv_usec / 1000,
+		progname, procpid, level);
 	va_start(ap, fmt);
-	vfprintf(fd, fmt, ap);
+	vdprintf(fd, fmt, ap);
 	va_end(ap);
+	sem_post(&logsem);
+}
+
+/* change ownership of log and pid files */
+void chownFiles(uid_t uid, gid_t gid)
+{
+	if (!debugflag && logfd > 0)
+		fchown(logfd, uid, gid);
+	if (pidfname[0])
+		chown(pidfname, uid, gid);
 }
 
 /* drop super-user privileges */
@@ -119,6 +159,8 @@ int dropRootPriv(const char *username, uid_t *uid, gid_t *gid)
 		errno = EUSERS;
 		return -1;
 	}
+	/* chown files prior to dropping root privileges */
+	chownFiles(pw.pw_uid, pw.pw_gid);
 	/* set supplemental groups */
 	ngrp = MAX_NGROUPS;
 	if (getgrouplist(username, pw.pw_gid, grps, &ngrp) < 0)
@@ -179,6 +221,11 @@ void blinkLED(void)
 /* (mail loop on/off is hardly noticeable) */
 void *blinkerLEDThread(void *arg)
 {
+	sigset_t blkset;
+
+	sigfillset(&blkset);
+	pthread_sigmask(SIG_BLOCK, &blkset, NULL);
+
 	for(;;) {
 		sem_wait(&blinksem);
 		digitalWrite(ledgpio, ledact ? HIGH : LOW);
@@ -187,10 +234,54 @@ void *blinkerLEDThread(void *arg)
 	}
 }
 
+/* Process shutdown */
+void endProcess(int status)
+{
+	int i;
+
+	unlink(pidfname);
+
+	/* terminate threads regardless of semaphores */
+	if (clntrun) {
+		pthread_cancel(clntaddthread);
+		for(i = 0; i < MAX_CLIENTS; i++)
+			if (clntfd[i] >= 0)
+				close(clntfd[i]);
+	}
+	if (ledgpio >= 0) {
+		pthread_cancel(blinkthread);
+		digitalWrite(ledgpio, ledact ? LOW : HIGH);
+	}
+	if (srvsock >= 0)
+		close(srvsock);
+	if (logfd >= 0) {
+		logprintf(logfd, LOG_NOTICE, "server shut down with code %d\n",
+			  status);
+		close(logfd);
+	}
+	exit(status);
+}
+
 /* Intercept TERM and INT signals */
 void signalQuit(int sig)
 {
-	exit(0);
+	logprintf(logfd, LOG_NOTICE, "signal %d received\n", sig);
+	endProcess(0);
+}
+
+/* SIGHUP - reopen log file, useful for logrotate */
+void signalReopenLog(int sig)
+{
+	if (!debugflag && logfd >= 0) {
+		logprintf(logfd, LOG_NOTICE, "signal %d received\n", sig);
+		logprintf(logfd, LOG_NOTICE, "closing log file\n");
+		fsync(logfd);	/* never hurts */
+		close(logfd);
+		logfd = open(logfname, O_CREAT | O_TRUNC | O_SYNC | O_WRONLY, FILE_UMASK);
+		if (logfd == -1)
+			endProcess(EXIT_FAILURE);
+		logprintf(logfd, LOG_NOTICE, "log file flushed after receiving signal %d\n", sig);
+	}
 }
 
 /* Format message */
@@ -227,6 +318,10 @@ void *clientAddThread(void *arg)
 {
 	int i, clfd, clen;
 	struct sockaddr_in clin;
+	sigset_t blkset;
+
+	sigfillset(&blkset);
+	pthread_sigmask(SIG_BLOCK, &blkset, NULL);
 
 	for(;;) {
 		clen = sizeof(struct sockaddr_in);
@@ -236,14 +331,12 @@ void *clientAddThread(void *arg)
 		if (i >= 0)
 			clntfd[i] = clfd;
 		sem_post(&clientsem);
-		if (vflag) {
-			if (i < 0)
-				logprintf(stdout, LOG_INFO, "client limit reached\n");
-			else
-				logprintf(stdout, LOG_INFO,
-					  "client %s [%d] connected successfully\n",
-					  inet_ntoa(clin.sin_addr), clfd);
-		}
+		if (i < 0)
+			logprintf(logfd, LOG_WARN, "client limit reached\n");
+		else
+			logprintf(logfd, LOG_INFO,
+				  "client %s [%d] connected successfully\n",
+				  inet_ntoa(clin.sin_addr), clfd);
 	}
 }
 
@@ -255,14 +348,14 @@ int updateClients(const char *buf, size_t len)
 
 	for(i = 0; i < MAX_CLIENTS; i++)
 		if (clntfd[i] >= 0) {
-			if (vflag)
-				logprintf(stdout, LOG_INFO,
-					  "sending message to client [%d]\n", clntfd[i]);
+			if (debugflag)
+				logprintf(logfd, LOG_DEBUG,
+					  "sending message to client [%d], %d bytes\n",
+					  clntfd[i], len);
 			sem_wait(&clientsem);
 			if (send(clntfd[i], buf, len, MSG_NOSIGNAL) == -1) {
-				if (vflag)
-					logprintf(stdout, LOG_INFO,
-						  "client [%d] disconnected\n", clntfd[i]);
+				logprintf(logfd, LOG_INFO,
+					  "client [%d] disconnected\n", clntfd[i]);
 				close(clntfd[i]);
 				clntfd[i] = -1;
 			}
@@ -270,9 +363,43 @@ int updateClients(const char *buf, size_t len)
 		}
 }
 
-/* ********** */
-/* *  MAIN  * */
-/* ********** */
+/* Daemonize process */
+int daemonize(void)
+{
+	pid_t pid, sid;
+
+	/* fork then parent exits */
+	pid = fork();
+	if (pid < 0)
+		return 1;
+	if (pid > 0)
+		exit(EXIT_SUCCESS);
+
+	/* set default umask, will be overriden by open anyway */
+	umask(0);
+
+	/* create new session ID */
+	sid = setsid();
+	if (sid < 0)
+		return 2;
+
+	/* change current working dir to root */
+	if (chdir("/") < 0)
+		return 3;
+
+	/* close standard file descriptors */
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+
+	return 0;
+}
+
+/* ************ */
+/* ************ */
+/* **  MAIN  ** */
+/* ************ */
+/* ************ */
 
 int main(int argc, char *argv[])
 {
@@ -282,18 +409,26 @@ int main(int argc, char *argv[])
 	uid_t uid;
 	gid_t gid;
 	int srvport;
-	char srvaddrstr[16];
-	struct sockaddr_in sinsrv;
-	int i, len;
+	int pidfd;
+	struct sockaddr_in srvsin;
+	int i, len, ena;
 	int codelen, repeats, interval;
 	char buf[MAX_MSG_SIZE + 1];
 	char username[MAX_USERNAME + 1];
+	struct sigaction sa;
+
+	/* get process name */
+	strncpy(progname, basename(argv[0]), PATH_MAX);
 
 	/* show help */
 	if (argc < 2) {
-		help(argv[0]);
+		help();
 		exit(0);
 	}
+
+	/* set PID initially so logprintf() can use it, */
+	/* the value will change after daemon forking */
+	procpid = getpid();
 
 	/* get parameters */
 	gpio = -1;
@@ -301,107 +436,247 @@ int main(int argc, char *argv[])
 	gid = 0;
 	ledgpio = -1;
 	ledact = 1;
-	vflag = 0;
+	debugflag = 0;
+	logfd = -1;
+	srvsock = -1;
+	clntrun = 0;
 	memset(username, 0, MAX_USERNAME + 1);
-	memset(srvaddrstr, 0, 16);
-	strncpy(srvaddrstr, SERVER_ADDR, 15);
+	memset((char *)&srvsin, 0, sizeof(srvsin));
+	srvsin.sin_family = AF_INET;
+	inet_aton(SERVER_ADDR, &srvsin.sin_addr);
 	srvport = SERVER_PORT;
-	while((opt = getopt(argc, argv, "vg:u:l:h:p:")) != -1) {
+	memset(logfname, 0, PATH_MAX + 1);
+	memset(pidfname, 0, PATH_MAX + 1);
+	strcpy(pidfname, PID_DIR);
+	strcat(pidfname, progname);
+	strcat(pidfname, ".pid");
+	while((opt = getopt(argc, argv, "g:u:dl:P:L:h:p:")) != -1) {
 		if (opt == 'g')
 			sscanf(optarg, "%d", &gpio);
 		else if (opt == 'u')
 			strncpy(username, optarg, MAX_USERNAME);
+		else if (opt == 'd')
+			debugflag = 1;
 		else if (opt == 'l')
+			strncpy(logfname, optarg, PATH_MAX);
+		else if (opt == 'P')
+			strncpy(pidfname, optarg, PATH_MAX);
+		else if (opt == 'L')
 			sscanf(optarg, "%d:%d", &ledgpio, &ledact);
-		else if (opt == 'h')
-			strncpy(srvaddrstr, optarg, 15);
+		else if (opt == 'h') {
+			if (!inet_aton(optarg, &srvsin.sin_addr)) {
+				dprintf(STDERR_FILENO, "Invalid IPv4 address specification.\n");
+				exit(EXIT_FAILURE);
+			}
+		}
 		else if (opt == 'p')
 			sscanf(optarg, "%d", &srvport);
-		else if (opt == 'v')
-			vflag = 1;
-		else if (opt == '?') {
-			help(argv[0]);
+		else if (opt == '?' || opt == 'h') {
+			help();
 			exit(EXIT_FAILURE);
 		}
 	}
 
 	if (getuid()) {
-		fputs("Must be run by root.\n", stderr);
+		dprintf(STDERR_FILENO, "Must be run by root.\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if (gpio < 0 || gpio > GPIO_PINS) {
-		fputs("Invalid RX GPIO pin.\n", stderr);
+		dprintf(STDERR_FILENO, "Invalid RX GPIO pin.\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if (ledgpio > GPIO_PINS || ledact < 0 || ledact > 1) {
-		fputs("Invalid LED specification.\n", stderr);
+		dprintf(STDERR_FILENO, "Invalid LED specification.\n");
 		exit(EXIT_FAILURE);
 	}
+
+	if (debugflag && logfname[0]) {
+		dprintf(STDERR_FILENO, "Flags -d and -l are mutually exclusive.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	srvsin.sin_port = htons(srvport);
+
+	/* initialize log */
+	if (debugflag)
+		logfd = STDOUT_FILENO;
+	else {
+		if (logfname[0]) {
+			logfd = open(logfname, O_CREAT | O_APPEND | O_SYNC | O_WRONLY, FILE_UMASK);
+			if (logfd == -1) {
+				dprintf(STDERR_FILENO, "Unable to open log file '%s': %s\n",
+					logfname, strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+		} else
+			logfd = -1;
+	}
+	sem_init(&logsem, 0, 1);
+
+	/* put banner in log */
+#ifdef BUILDSTAMP
+	logprintf(logfd, LOG_NOTICE, "starting %s build %s (devices: %d)\n",
+		  BANNER, BUILDSTAMP, RADIO433_DEVICES);
+#else
+	logprintf(logfd, LOG_NOTICE, "starting %s (devices: %d)\n", BANNER,
+		  RADIO433_DEVICES);
+#endif
+
+	/* check if pid file exists */
+	pidfd = open(pidfname, O_PATH, FILE_UMASK);
+	if (pidfd >= 0) {
+		/* pid file exists */
+		close(pidfd);
+		dprintf(STDERR_FILENO, "PID file (%s) exists, daemon already running or stale file detected.\n",
+			pidfname);
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to create PID file %s: %s\n",
+				  pidfname, strerror(errno));
+		close(logfd);
+		exit(EXIT_FAILURE);
+	}
+
+	/* setup process */
+	if (!debugflag)
+		if (daemonize()) {
+			dprintf(STDERR_FILENO, "Unable to fork to background: %s\n",
+				strerror(errno));
+			logprintf(logfd, LOG_ERROR, "unable to fork to background: %s\n",
+				  strerror(errno));
+			close(logfd);
+			exit(EXIT_FAILURE);
+		} else {
+			procpid = getpid();
+			logprintf(logfd, LOG_NOTICE, "forking to background with PID %d\n",
+				  procpid);
+		}
+
+	/* populate pid file (new PID after daemonize()) */
+	pidfd = open(pidfname, O_CREAT | O_WRONLY, FILE_UMASK);
+	if (pidfd < 0) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to create PID file %s: %s\n",
+				  pidfname, strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to create PID file %s: %s\n",
+				pidfname, strerror(errno));
+		endProcess(EXIT_FAILURE);
+	}
+	dprintf(pidfd, "%d\n", procpid);
+	close(pidfd);
+
+	/* signal handler */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = SIG_IGN;
+	sigaction(SIGQUIT, &sa, NULL);
+	sa.sa_handler = &signalQuit;
+	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGINT, &sa, NULL);
+	sa.sa_handler = &signalReopenLog;
+	sigaction(SIGHUP, &sa, NULL);
 
 	/* setup server */
 	srvsock = socket(AF_INET, SOCK_STREAM, 0);
 	if (srvsock == -1) {
-		fprintf(stderr, "Unable to create socket: %s\n",
-			strerror (errno));
-		exit(EXIT_FAILURE);
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to create server socket: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to create server socket: %s\n",
+				strerror(errno));
+		endProcess(EXIT_FAILURE);
 	}
-	memset((char *)&sinsrv, 0, sizeof(sinsrv));
-	if (!inet_aton(srvaddrstr, &sinsrv.sin_addr)) {
-		fputs("Invalid IPv4 address specification.\n", stderr);
-		exit(EXIT_FAILURE);
+	ena = 1;
+	if (setsockopt(srvsock, SOL_SOCKET, SO_REUSEADDR, &ena, sizeof(int)) == -1) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to set flags for server socket: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to set flags for server socket: %s\n",
+				strerror(errno));
+		endProcess(EXIT_FAILURE);
 	}
-	sinsrv.sin_family = AF_INET;
-	sinsrv.sin_port = htons(srvport);
-	if (bind(srvsock, (struct sockaddr *)&sinsrv, sizeof(sinsrv)) == -1) {
-		fprintf(stderr, "Unable to bind to socket: %s\n",
-			strerror (errno));
-		exit(EXIT_FAILURE);
+	if (setsockopt(srvsock, SOL_SOCKET, SO_REUSEPORT, &ena, sizeof(int)) == -1) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to set flags for server socket: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to set flags for server socket: %s\n",
+				strerror(errno));
+		endProcess(EXIT_FAILURE);
+	}
+	if (bind(srvsock, (struct sockaddr *)&srvsin, sizeof(srvsin)) == -1) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to bind to server socket: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to bind to server socket: %s\n",
+				strerror(errno));
+		endProcess(EXIT_FAILURE);
 	}
 	if (listen(srvsock, (MAX_CLIENTS >> 4)) == -1) {
-		fprintf(stderr, "Unable to listen to socket: %s\n",
-			strerror (errno));
-		exit(EXIT_FAILURE);
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to listen to server socket: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to listen to server socket: %s\n",
+				strerror(errno));
+		endProcess(EXIT_FAILURE);
 	}
-	logprintf(stdout, LOG_NOTICE, "accepting client TCP connections on %s:%d\n",
-		  srvaddrstr, srvport);
-
-	/* initialize WiringPi library - use BCM GPIO numbers */
-	wiringPiSetupGpio();
-
-	/* no transmission, only read */
-	Radio433_init(-1, gpio);
+	logprintf(logfd, LOG_NOTICE, "accepting client TCP connections on %s port %d\n",
+		  inet_ntoa(srvsin.sin_addr), srvport);
 
 	/* change scheduling priority */
 	if (changeSched()) {
-		fprintf(stderr, "Unable to change process scheduling priority: %s\n",
-			strerror (errno));
-		exit(-1);
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to change process scheduling priority: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to change process scheduling priority: %s\n",
+				strerror (errno));
+		endProcess(EXIT_FAILURE);
+	}
+
+	/* initialize WiringPi library - use BCM GPIO numbers - must be root */
+	wiringPiSetupGpio();
+
+	/* no transmission, only read (uses GPIO ISR, must be root) */
+	if (Radio433_init(-1, gpio)) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to initialize radio input\n");
+		else
+			dprintf(STDERR_FILENO, "Unable to initialize radio input\n");
+		endProcess(EXIT_FAILURE);
 	}
 
 	/* drop privileges */
 	if (username[0]) {
 		if (dropRootPriv(username, &uid, &gid)) {
-			fprintf(stderr, "Unable to drop super-user privileges: %s\n",
-				strerror (errno));
-			exit(EXIT_FAILURE);
+			if (!debugflag)
+				logprintf(logfd, LOG_ERROR, "unable to drop super-user privileges: %s\n",
+					  strerror (errno));
+			else
+				dprintf(STDERR_FILENO, "Unable to drop super-user privileges: %s\n",
+					strerror (errno));
+			endProcess(EXIT_FAILURE);
 		}
 		else
-			logprintf(stdout, LOG_NOTICE,
+			logprintf(logfd, LOG_NOTICE,
 				  "dropping super-user privileges, running as UID=%ld GID=%ld\n",
 				  uid, gid);
 	}
 
 	/* activate LED */
-	if (ledgpio > 0) {
-		logprintf(stdout, LOG_NOTICE, "activity LED set to GPIO %d (active %s)\n",
+	if (ledgpio >= 0) {
+		logprintf(logfd, LOG_NOTICE, "activity LED set to GPIO %d (active %s)\n",
 			  ledgpio, ledact ? "high" : "low");
 		digitalWrite(ledgpio, ledact ? LOW : HIGH);
 		sem_init(&blinksem, 0, 0);
 		if (pthread_create(&blinkthread, NULL, blinkerLEDThread, NULL)) {
-			fputs("Cannot start blinking thread.\n", stderr);
-			exit(EXIT_FAILURE);
+			logprintf(logfd, LOG_WARN, "blinking thread cannot be started, LED disabled\n");
+			ledgpio = -1;
 		}
 	}
 
@@ -410,19 +685,23 @@ int main(int argc, char *argv[])
 		clntfd[i] = -1;
 	sem_init(&clientsem, 0, 1);
 	if (pthread_create(&clntaddthread, NULL, clientAddThread, NULL)) {
-		fputs("Cannot start network listener thread.\n", stderr);
-		exit(EXIT_FAILURE);
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "cannot start network listener thread\n");
+		else
+			dprintf(STDERR_FILENO, "Cannot start network listener thread.\n");
+		endProcess(EXIT_FAILURE);
 	}
+	clntrun = 1;
 
 #ifdef HAS_CPUFREQ
 	/* warn user if system frequency is dynamic */
 	if (checkCpuFreq())
-		logprintf(stdout, LOG_WARN,
-			  "current cpufreq governor is not optimal for radio code timing");
+		logprintf(logfd, LOG_WARN,
+			  "current CPUfreq governor is not optimal for radio code timing\n");
 #endif
 
 	/* info */
-	logprintf(stdout, LOG_NOTICE,
+	logprintf(logfd, LOG_NOTICE,
 		  "starting to capture RF codes from receiver connected to GPIO pin %d\n",
 		  gpio);
 
@@ -431,12 +710,13 @@ int main(int argc, char *argv[])
 		/* codes are buffered, so this loop can be more relaxed */
 		code = Radio433_getCodeExt(&ts, &type, &bits, &codelen,
 					   &repeats, &interval);
-		if (ledgpio > 0)
+		logprintf(logfd, LOG_INFO, "radio transmission received\n");
+		if (ledgpio >= 0)
 			blinkLED();
 		len = formatMessage(buf, &ts, type, bits, codelen,
 				    repeats, interval, code);
-		if (vflag)
-			logprintf(stdout, LOG_INFO, "MSG(%d): %s", len, buf);
+		if (debugflag)
+			logprintf(logfd, LOG_DEBUG, "sending message (%d bytes): %s", len, buf);
 		updateClients(buf, len);
 	}
 }

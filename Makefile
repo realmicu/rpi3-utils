@@ -194,7 +194,7 @@ radio433sniffer: radio433sniffer.c radio433_lib.o radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
 
 radio433daemon:	radio433daemon.c radio433_lib.o radio433_dev.o
-	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS) -DHAS_CPUFREQ -lcpufreq
+	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS) -DHAS_CPUFREQ -lcpufreq -DBUILDSTAMP=\"$(BUILDSTAMP)\"
 
 radio433client:	radio433client.c radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS)
