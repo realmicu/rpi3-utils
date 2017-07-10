@@ -86,7 +86,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.96 (radio+i2c) server"
+#define BANNER			"SensorProxy v0.97 (radio+i2c) server"
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
 #define SERVER_PORT		5444
 #define SERVER_ADDR		"0.0.0.0"
@@ -990,7 +990,7 @@ int main(int argc, char *argv[])
 	char *msgptr, *msgend;
 	struct sigaction sa;
 	struct radmsg rm;
-	int idx;
+	int idx, ena;
 
 	/* get process name */
 	strncpy(progname, basename(argv[0]), PATH_MAX);
@@ -1177,6 +1177,25 @@ int main(int argc, char *argv[])
 			dprintf(STDERR_FILENO, "Unable to create server socket: %s\n",
 				strerror(errno));
 
+		endProcess(EXIT_FAILURE);
+	}
+	ena = 1;
+	if (setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &ena, sizeof(int)) == -1) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to set flags for server socket: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to set flags for server socket: %s\n",
+				strerror(errno));
+		endProcess(EXIT_FAILURE);
+	}
+	if (setsockopt(srvfd, SOL_SOCKET, SO_REUSEPORT, &ena, sizeof(int)) == -1) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to set flags for server socket: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to set flags for server socket: %s\n",
+				strerror(errno));
 		endProcess(EXIT_FAILURE);
 	}
 	if (bind(srvfd, (struct sockaddr *)&srvsin, sizeof(srvsin)) == -1) {
