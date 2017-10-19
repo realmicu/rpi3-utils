@@ -319,6 +319,99 @@ unsigned long long Radio433_getCodeExt(struct timeval *ts,
 	return cb->code;
 }
 
+/* Send raw code (can be any length up to 64 bits) */
+int Radio433_sendRawCode(unsigned long long code, int coding, int bits, int repeats)
+{
+	int i, j;
+	unsigned long long codemask;
+	unsigned long txbuf[130]; /* 2 + 2 * sizeof(unsigned long long) = 130 */
+	unsigned long eotpulse;
+
+	if (txgpio < 0)
+		return -1;
+
+	if (bits < 0 || bits > sizeof(unsigned long long) || repeats <= 0)
+		return -2;
+
+	/* construct timing table */
+	codemask = 1 << ( bits - 1);
+	if (coding == RADIO433_CODING_HIGHLOW) {
+		/* sync */
+		txbuf[0] = kemotPulse.pulse_short;
+		txbuf[1] = kemotPulse.pulse_sync;
+		/* data bits: high-low */
+		for (i = 0; i < bits << 1; i += 2) {
+			if (code & codemask) {
+				txbuf[2 + i] = kemotPulse.pulse_long;
+				txbuf[3 + i] = kemotPulse.pulse_short;
+			} else {
+				txbuf[2 + i] = kemotPulse.pulse_short;
+				txbuf[3 + i] = kemotPulse.pulse_long;
+			}
+			codemask >>= 1;
+		}
+		eotpulse = kemotPulse.pulse_short;
+	} else if (coding == RADIO433_CODING_LOWVAR) {
+		/* sync */
+		txbuf[0] = hyuwsPulse.pulse_high;
+		txbuf[1] = hyuwsPulse.pulse_sync;
+		/* data bits: high-low */
+		for (i = 0; i < bits << 1; i += 2) {
+			txbuf[2 + i] = hyuwsPulse.pulse_high;
+			if (code & codemask)
+				txbuf[3 + i] = hyuwsPulse.pulse_low_long;
+			else
+				txbuf[3 + i] = hyuwsPulse.pulse_low_short;
+			codemask >>= 1;
+		}
+		eotpulse = hyuwsPulse.pulse_high;
+	} else
+		return -3;
+
+	/* generate code */
+	for (j = 0; j < repeats; j++)
+		for (i = 0; i < 2 + (bits << 1); i += 2) {
+			digitalWrite(txgpio, HIGH);
+			delayMicroseconds(txbuf[i]);
+			digitalWrite(txgpio, LOW);
+			delayMicroseconds(txbuf[i + 1]);
+		}
+
+	/* code sequence always ends with low signal which may last
+	   for unknown length - till nearest noise peak, so pulse it
+	   to end within predefined timing */
+	digitalWrite(txgpio, HIGH);
+	delayMicroseconds(eotpulse);
+	digitalWrite(txgpio, LOW);
+	delayMicroseconds(eotpulse);
+
+	return 0;
+}
+
+/* Send device-specific code (repeats == 0 - use default number of packets) */
+int Radio433_sendDevCode(unsigned long long code, int type, int repeats)
+{
+	int i;
+
+	if (txgpio < 0)
+		return -1;
+
+	if (repeats < 0 || type < 0)
+		return -2;
+
+	/* find device description */
+	for (i = 0; i < RADIO433_DEVICES; i++)
+		if (tDevInfo[i].type == type)
+			break;
+
+	/* device not defined, exit */
+	if (i == RADIO433_DEVICES)
+		return -3;
+
+	return Radio433_sendRawCode(code, tDevInfo[i].coding, tDevInfo[i].bits,
+				    repeats ? repeats : tDevInfo[i].repeats);
+}
+
 /*
  * *********************
  * Code analyzing thread

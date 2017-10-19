@@ -79,6 +79,22 @@ int Radio433_pwrGetCommand(unsigned long long code,
 	return 1;
 }
 
+/* Encode power command into raw code */
+unsigned long long Radio433_pwrGetCode(int systemid, int deviceid,
+                                       int button)
+{
+	unsigned int tmpsysid, tmpdevid;
+
+	tmpsysid = ~systemid & 0x1F;
+	tmpdevid = ~deviceid & 0x1F;
+	return ((((tmpsysid & 0x10) << 4) + ((tmpsysid & 0x8) << 3) + \
+	       ((tmpsysid & 0x4) << 2) + ((tmpsysid & 0x2) << 1) + \
+	       (tmpsysid & 0x1)) << 14) + ((((tmpdevid & 0x10) << 4) + \
+	       ((tmpdevid & 0x8) << 3) + ((tmpdevid & 0x4) << 2) + \
+	       ((tmpdevid & 0x2) << 1) + (tmpdevid & 0x1)) << 4) + \
+	       (0x1 << ((~button & 0x1) << 1));
+}
+
 /*
  * ***************************
  * Thermometer (Device type 1)
@@ -92,7 +108,7 @@ int Radio433_pwrGetCommand(unsigned long long code,
  *   temperature trend (2 bit), up/down/stable
  *   temperature (12 bits), reversed signed u2
  *   humidity (8 bits), reversed signed u2
- *   checksum (4 bits), unknown alrorithm
+ *   checksum (4 bits), unknown algorithm
  */
 
 /* Temperature range */
@@ -165,4 +181,44 @@ int Radio433_thmGetData(unsigned long long code, int *sysid, int *thmid,
 		return 0;
 
 	return 1;
+}
+
+/* Encode sensor data */
+/* NOTE: code checksum should be generated but it is not */
+unsigned long long Radio433_thmGetCode(int sysid, int thmid, int ch,
+				       int batlow, int tdir, double temp,
+				       int humid)
+{
+	int i, v;
+	unsigned int mask;
+	unsigned long long code;
+
+	/* accept only sane parameters */
+	if (sysid < 0 || sysid > 15 || thmid < 0 || thmid > 7 || \
+	    ch < 0 || ch > 3 || batlow < 0 || batlow > 1 || \
+	    tdir < 0 || tdir > 3 || temp < THERMO433_MIN_TEMP || \
+	    temp > THERMO433_MAX_TEMP || humid < 0 || humid > 100)
+		return 0;
+
+	code = (sysid & 0xfULL) << 32 | (ch & 0x3ULL) << 30 | \
+	       (thmid & 0x7ULL) << 28 | (batlow & 0x1ULL) << 27 | \
+	       (tdir & 0x3ULL) << 25;
+
+	v = (int)(temp * 10) & 0xfff;	/* signed */
+	mask = 0x1;
+	for (i = 0; i < 12; i++) {
+		code |= (v & mask) << (23 - i);
+		mask <<= 1;
+	}
+
+	v = (humid - 100) & 0xff;	/* signed */
+	mask = 0x1;
+	for (i = 0; i < 8; i++) {
+		code |= (v & mask) << (11 - i);
+		mask <<= 1;
+	}
+
+	/* checksum is ignored for now */
+
+	return code;
 }
