@@ -330,7 +330,7 @@ int Radio433_sendRawCode(unsigned long long code, int coding, int bits, int repe
 	if (txgpio < 0)
 		return -1;
 
-	if (bits < 0 || bits > sizeof(unsigned long long) || repeats <= 0)
+	if (bits < 0 || bits > (sizeof(unsigned long long) << 3) || repeats <= 0)
 		return -2;
 
 	/* construct timing table */
@@ -389,7 +389,7 @@ int Radio433_sendRawCode(unsigned long long code, int coding, int bits, int repe
 }
 
 /* Send device-specific code (repeats == 0 - use default number of packets) */
-int Radio433_sendDevCode(unsigned long long code, int type, int repeats)
+int Radio433_sendDeviceCode(unsigned long long code, int type, int repeats)
 {
 	int i;
 

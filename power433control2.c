@@ -164,8 +164,8 @@ int main(int argc, char *argv[])
 		       codes[i].dev & POWER433_DEVICE_D ? "D" : "",
 		       codes[i].dev & POWER433_DEVICE_E ? "E" : "",
 		       codes[i].sys, codes[i].oper ? "ON" : "OFF");
-		Radio433_sendDevCode(Radio433_pwrGetCode(codes[i].sys, codes[i].dev, codes[i].oper),
-				     RADIO433_DEVICE_KEMOTURZ1226, CODE_RETRANS);
+		Radio433_sendDeviceCode(Radio433_pwrGetCode(codes[i].sys, codes[i].dev, codes[i].oper),
+					RADIO433_DEVICE_KEMOTURZ1226, CODE_RETRANS);
 	}
 
 	free(codes);
