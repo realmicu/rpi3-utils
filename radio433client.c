@@ -18,7 +18,8 @@
 #define RADIO433_DEFAULT_HOST	"127.0.0.1"
 #define RADIO433_DEFAULT_PORT	5433
 #define RECONNECT_DELAY_SEC	10
-#define MAX_MSG_SIZE		128
+#define RADMSG_SIZE		128     /* radio daemon message size */
+#define RADBUF_SIZE		(RADMSG_SIZE * 8)
 #define MSG_HDR			"<RX>"
 #define MSG_EOT			"<ZZ>"
 
@@ -55,7 +56,8 @@ int main(int argc, char *argv[])
 	char trend[3] = { '_', '/', '\\' };
 	int port, clfd, msglen;
 	struct sockaddr_in clntsin;
-	char buf[MAX_MSG_SIZE];
+	char buf[RADBUF_SIZE + 1];
+	char *msgptr, *msgend;
 	int waitflag;
 	int codelen, repeats, interval;
 
@@ -110,8 +112,10 @@ int main(int argc, char *argv[])
 
 	/* function loop - never ends, send signal to exit */
 	for(;;) {
-		msglen = recv(clfd, buf, MAX_MSG_SIZE, 0);
-		if (msglen == -1) {
+		do
+			msglen = recv(clfd, buf, RADBUF_SIZE, 0);
+		while (msglen == -1 && errno == EINTR);
+		if (msglen < 0) {
                 	fprintf(stderr, "Error receiving data from server: %s\n",
                         	strerror (errno));
                 	exit(EXIT_FAILURE);
@@ -119,49 +123,56 @@ int main(int argc, char *argv[])
 			fputs("Server has closed connection.\n", stderr);
 			exit(EXIT_FAILURE);
 		}
-		/* check for start and stop strings */
-		if (strncmp(buf, MSG_HDR, 4) || strncmp(buf + msglen - 5, MSG_EOT, 4))
-			continue;
-		/* expect formatted message with 8 numbers */
-		if (sscanf(buf + 4, "%lu.%u;%d;%d;%d;0x%X;%d;0x%llX;", &tss, &tsms,
-			   &codelen, &repeats, &interval, &type, &bits, &code) != 8)
-			continue;
-		tl = localtime(&tss);
-		printf("%d-%02d-%02d %02d:%02d:%02d.%03u", 1900 + tl->tm_year,
-		       tl->tm_mon + 1, tl->tm_mday, tl->tm_hour, tl->tm_min,
-		       tl->tm_sec, tsms);
-                if (type & RADIO433_CLASS_POWER)
-                        tid = 1;
-                else if (type & RADIO433_CLASS_WEATHER)
-                        tid = 2;
-                else if (type & RADIO433_CLASS_REMOTE)
-                        tid = 3;
-                else
-                        tid = 0;
-		printf("  %s len = %d , code = 0x%0*llX", stype[tid], bits,
-		       (bits + 3) >> 2, code);
-		if (type == RADIO433_DEVICE_KEMOTURZ1226) {
-			if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))
-				printf(" , %d : %s%s%s%s%s : %s\n", sysid,
-				       devid & POWER433_DEVICE_A ? "A" : "",
-				       devid & POWER433_DEVICE_B ? "B" : "",
-				       devid & POWER433_DEVICE_C ? "C" : "",
-				       devid & POWER433_DEVICE_D ? "D" : "",
-				       devid & POWER433_DEVICE_E ? "E" : "",
-				       btn ? "ON" : "OFF");
+		buf[msglen] = 0;
+		msgptr = buf;
+		do {
+			msgptr = strstr(msgptr, MSG_HDR);
+			if (msgptr == NULL)
+				break;
+			msgend = strstr(msgptr, MSG_EOT);
+			if (msgend == NULL)
+				break;
+			if (sscanf(msgptr + 4, "%lu.%u;%d;%d;%d;0x%X;%d;0x%llX;",
+			    &tss, &tsms, &codelen, &repeats, &interval, &type,
+			    &bits, &code) != 8)
+				continue;
+			tl = localtime(&tss);
+			printf("%d-%02d-%02d %02d:%02d:%02d.%03u",
+			       1900 + tl->tm_year, tl->tm_mon + 1,
+			       tl->tm_mday, tl->tm_hour, tl->tm_min,
+			       tl->tm_sec, tsms);
+			if (type & RADIO433_CLASS_POWER)
+				tid = 1;
+			else if (type & RADIO433_CLASS_WEATHER)
+				tid = 2;
+			else if (type & RADIO433_CLASS_REMOTE)
+				tid = 3;
 			else
+				tid = 0;
+			printf("  %s len = %d , code = 0x%0*llX", stype[tid], bits,
+			       (bits + 3) >> 2, code);
+			if (type == RADIO433_DEVICE_KEMOTURZ1226) {
+				if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))
+					printf(" , %d : %s%s%s%s%s : %s\n", sysid,
+					       devid & POWER433_DEVICE_A ? "A" : "",
+					       devid & POWER433_DEVICE_B ? "B" : "",
+					       devid & POWER433_DEVICE_C ? "C" : "",
+					       devid & POWER433_DEVICE_D ? "D" : "",
+					       devid & POWER433_DEVICE_E ? "E" : "",
+					       btn ? "ON" : "OFF");
+				else
+					puts("");
+			} else if (type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
+				if (Radio433_thmGetData(code, &sysid, &devid, &ch,
+							&batlow, &tdir, &temp, &humid))
+					printf(" , %1d , T: %+.1lf C %c , H: %d %% %c\n",
+					       ch, temp, tdir < 0 ? '!' : trend[tdir],
+					       humid, batlow ? 'b' : ' ');
+				else
+					puts("");
+			} else
 				puts("");
-		}
-		else if (type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
-			if (Radio433_thmGetData(code, &sysid, &devid, &ch,
-						&batlow, &tdir, &temp, &humid))
-				printf(" , %1d , T: %+.1lf C %c , H: %d %% %c\n",
-				       ch, temp, tdir < 0 ? '!' : trend[tdir],
-				       humid, batlow ? 'b' : ' ');
-			else
-				puts("");
-		}
-		else
-			puts("");
-	}
+			msgptr = msgend + 5;
+		} while (msgptr < buf + msglen);
+	}	/* main loop ends here */
 }
