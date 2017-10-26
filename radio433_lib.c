@@ -319,12 +319,34 @@ unsigned long long Radio433_getCodeExt(struct timeval *ts,
 	return cb->code;
 }
 
+/* Transmit timed pulses from an array pulses[len] beginning with starthigh key */
+int Radio433_pulseCode(const unsigned long *pulses, int len, int starthigh)
+{
+	int i, p;
+
+	if (txgpio < 0)
+		return -1;
+
+	if (len < 0 || starthigh < 0)
+		return -2;
+
+	p = starthigh ? 1 : 0;
+
+	for (i = 0; i < len; i++) {
+		digitalWrite(txgpio, p);
+		delayMicroseconds(pulses[i]);
+		p = 1 - p;
+	}
+
+	return 0;
+}
+
 /* Send raw code (can be any length up to 64 bits) */
 int Radio433_sendRawCode(unsigned long long code, int coding, int bits, int repeats)
 {
-	int i, j;
+	int i, j, txlen;
 	unsigned long long codemask;
-	unsigned long txbuf[130]; /* 2 + 2 * sizeof(unsigned long long) = 130 */
+	unsigned long *txbuf;
 	unsigned long eotpulse;
 
 	if (txgpio < 0)
@@ -334,6 +356,8 @@ int Radio433_sendRawCode(unsigned long long code, int coding, int bits, int repe
 		return -2;
 
 	/* construct timing table */
+	txlen = 2 + (bits << 1);	/* sync + 2 * bits */
+	txbuf = (unsigned long*)malloc(txlen);
 	codemask = 1 << ( bits - 1);
 	if (coding == RADIO433_CODING_HIGHLOW) {
 		/* sync */
@@ -365,17 +389,14 @@ int Radio433_sendRawCode(unsigned long long code, int coding, int bits, int repe
 			codemask >>= 1;
 		}
 		eotpulse = hyuwsPulse.pulse_high;
-	} else
+	} else {
+		free(txbuf);
 		return -3;
+	}
 
 	/* generate code */
 	for (j = 0; j < repeats; j++)
-		for (i = 0; i < 2 + (bits << 1); i += 2) {
-			digitalWrite(txgpio, HIGH);
-			delayMicroseconds(txbuf[i]);
-			digitalWrite(txgpio, LOW);
-			delayMicroseconds(txbuf[i + 1]);
-		}
+		Radio433_pulseCode(txbuf, txlen, 1);
 
 	/* code sequence always ends with low signal which may last
 	   for unknown length - till nearest noise peak, so pulse it
@@ -385,6 +406,7 @@ int Radio433_sendRawCode(unsigned long long code, int coding, int bits, int repe
 	digitalWrite(txgpio, LOW);
 	delayMicroseconds(eotpulse);
 
+	free(txbuf);
 	return 0;
 }
 
