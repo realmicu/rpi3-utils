@@ -143,46 +143,45 @@ int main(int argc, char *argv[])
 				break;
 			if (sscanf(msgptr + 4, "%lu.%u;%d;%d;%d;0x%X;%d;0x%llX;",
 			    &tss, &tsms, &codelen, &repeats, &interval, &type,
-			    &bits, &code) != 8)
-				continue;
-			if (filt && !(type & filt))
-				continue;
-			tl = localtime(&tss);
-			printf("%d-%02d-%02d %02d:%02d:%02d.%03u",
-			       1900 + tl->tm_year, tl->tm_mon + 1,
-			       tl->tm_mday, tl->tm_hour, tl->tm_min,
-			       tl->tm_sec, tsms);
-			if (type & RADIO433_CLASS_POWER)
-				tid = 1;
-			else if (type & RADIO433_CLASS_WEATHER)
-				tid = 2;
-			else if (type & RADIO433_CLASS_REMOTE)
-				tid = 3;
-			else
-				tid = 0;
-			printf("  %s%s len = %d , code = 0x%0*llX", filt ? "*" : "",
-			       stype[tid], bits, (bits + 3) >> 2, code);
-			if (type == RADIO433_DEVICE_KEMOTURZ1226) {
-				if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))
-					printf(" , %d : %s%s%s%s%s : %s\n", sysid,
-					       devid & POWER433_DEVICE_A ? "A" : "",
-					       devid & POWER433_DEVICE_B ? "B" : "",
-					       devid & POWER433_DEVICE_C ? "C" : "",
-					       devid & POWER433_DEVICE_D ? "D" : "",
-					       devid & POWER433_DEVICE_E ? "E" : "",
-					       btn ? "ON" : "OFF");
-				else
-					puts("");
-			} else if (type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
-				if (Radio433_thmGetData(code, &sysid, &devid, &ch,
-							&batlow, &tdir, &temp, &humid))
-					printf(" , %1d , T: %+.1lf C %c , H: %d %% %c\n",
-					       ch, temp, tdir < 0 ? '!' : trend[tdir],
-					       humid, batlow ? 'b' : ' ');
-				else
-					puts("");
-			} else
-				puts("");
+			    &bits, &code) == 8)
+				if (!filt || (type & filt)) {
+					tl = localtime(&tss);
+					printf("%d-%02d-%02d %02d:%02d:%02d.%03u",
+					       1900 + tl->tm_year, tl->tm_mon + 1,
+					       tl->tm_mday, tl->tm_hour, tl->tm_min,
+					       tl->tm_sec, tsms);
+					if (type & RADIO433_CLASS_POWER)
+						tid = 1;
+					else if (type & RADIO433_CLASS_WEATHER)
+						tid = 2;
+					else if (type & RADIO433_CLASS_REMOTE)
+						tid = 3;
+					else
+						tid = 0;
+					printf("  %s%s len = %d , code = 0x%0*llX", filt ? "*" : "",
+					       stype[tid], bits, (bits + 3) >> 2, code);
+					if (type == RADIO433_DEVICE_KEMOTURZ1226) {
+						if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))
+							printf(" , %d : %s%s%s%s%s : %s\n", sysid,
+							       devid & POWER433_DEVICE_A ? "A" : "",
+							       devid & POWER433_DEVICE_B ? "B" : "",
+							       devid & POWER433_DEVICE_C ? "C" : "",
+							       devid & POWER433_DEVICE_D ? "D" : "",
+							       devid & POWER433_DEVICE_E ? "E" : "",
+							       btn ? "ON" : "OFF");
+						else
+							puts("");
+					} else if (type == RADIO433_DEVICE_HYUWSSENZOR77TH) {
+						if (Radio433_thmGetData(code, &sysid, &devid, &ch,
+									&batlow, &tdir, &temp, &humid))
+							printf(" , %1d , T: %+.1lf C %c , H: %d %% %c\n",
+							       ch, temp, tdir < 0 ? '!' : trend[tdir],
+							       humid, batlow ? 'b' : ' ');
+						else
+							puts("");
+					} else
+						puts("");
+				}
 			msgptr = msgend + 5;
 		} while (msgptr < buf + msglen);
 	}	/* main loop ends here */
