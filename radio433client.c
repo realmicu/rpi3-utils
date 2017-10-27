@@ -29,12 +29,14 @@ extern int optind, opterr, optopt;
 /* Show help */
 void help(char *progname)
 {
-	printf("Usage:\n\t%s [-w] [-r ipaddr] [-p tcpport]\n\n", progname);
+	printf("\nUsage:\n\t%s [-w] [-P] [-T] [-R] [-r ipaddr] [-p tcpport]\n\n", progname);
 	puts("Where:");
-	puts("\t-w       \t - wait for server (optional)");
-	puts("\t-r ipaddr\t - IPv4 address of radio433daemon server (optional)");
-	puts("\t-p tcpport\t - TCP port of radio433daemon server (optional)");
-	printf("When no parameter is specified, client tries to connect to server %s on port %d.\n",
+	puts("\t-w         - wait for server when starting (optional)");
+	puts("\t-P,-T,-R   - select power (-P), weather (-T) or remote");
+	puts("\t             control (-R) messages (optional, default: all)");
+	puts("\t-r ipaddr  - IPv4 address of radio433daemon server (optional)");
+	puts("\t-p tcpport - TCP port of radio433daemon server (optional)");
+	printf("\nWhen no parameter is specified, client tries to connect to server %s on port %d.\n\n",
 	       RADIO433_DEFAULT_HOST, RADIO433_DEFAULT_PORT);
 }
 
@@ -45,7 +47,7 @@ void help(char *progname)
 int main(int argc, char *argv[])
 {
 	time_t tss;
-	unsigned int tsms;
+	unsigned int tsms, filt;
 	struct tm *tl;
 	unsigned long long code;
 	int opt, tid, type, bits;
@@ -67,7 +69,8 @@ int main(int argc, char *argv[])
 	inet_aton(RADIO433_DEFAULT_HOST, &clntsin.sin_addr);
 	port = RADIO433_DEFAULT_PORT;
 	waitflag = 0;
-	while((opt = getopt(argc, argv, "hwr:p:")) != -1) {
+	filt = 0;
+	while((opt = getopt(argc, argv, "hwPTRr:p:")) != -1) {
 		if (opt == 'r') {
 			if (!inet_aton(optarg, &clntsin.sin_addr)) {
 				fputs("Invalid IPv4 address specification.\n", stderr);
@@ -78,6 +81,12 @@ int main(int argc, char *argv[])
 			sscanf(optarg, "%d", port);
 		else if (opt == 'w')
 			waitflag = 1;
+		else if (opt == 'P')
+			filt |= RADIO433_CLASS_POWER;
+		else if (opt == 'T')
+			filt |= RADIO433_CLASS_WEATHER;
+		else if (opt == 'R')
+			filt |= RADIO433_CLASS_REMOTE;
 		else if (opt == '?' || opt == 'h') {
 			help(argv[0]);
 			exit(EXIT_FAILURE);
@@ -136,6 +145,8 @@ int main(int argc, char *argv[])
 			    &tss, &tsms, &codelen, &repeats, &interval, &type,
 			    &bits, &code) != 8)
 				continue;
+			if (filt && !(type & filt))
+				continue;
 			tl = localtime(&tss);
 			printf("%d-%02d-%02d %02d:%02d:%02d.%03u",
 			       1900 + tl->tm_year, tl->tm_mon + 1,
@@ -149,8 +160,8 @@ int main(int argc, char *argv[])
 				tid = 3;
 			else
 				tid = 0;
-			printf("  %s len = %d , code = 0x%0*llX", stype[tid], bits,
-			       (bits + 3) >> 2, code);
+			printf("  %s%s len = %d , code = 0x%0*llX", filt ? "*" : "",
+			       stype[tid], bits, (bits + 3) >> 2, code);
 			if (type == RADIO433_DEVICE_KEMOTURZ1226) {
 				if (Radio433_pwrGetCommand(code, &sysid, &devid, &btn))
 					printf(" , %d : %s%s%s%s%s : %s\n", sysid,
