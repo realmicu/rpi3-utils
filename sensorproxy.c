@@ -799,7 +799,8 @@ void *i2cSensorThread(void *arg)
 				} else if (c->id == BMP180_I2C_ADDR) {
 					gettimeofday(&ts, NULL);
 					v0 = BMP180_getPressureFP(c->fd, BMP180_OSS_MODE_UHR, &v1);
-					if (v0 < 300.0 || v0 > 1100.0)
+					if (v0 < 300.0 || v0 > 1100.0 ||
+					    v1 < -40.0 || v1 > 85.0)
 						continue;
 					s->tsec = ts.tv_sec;
 					s->tmsec = ts.tv_usec / 1000;
