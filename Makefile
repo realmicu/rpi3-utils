@@ -10,7 +10,7 @@ PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	power433send power433control bh1750_test env_mon ssd1306_test \
 	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer \
 	radio433sniffer radio433daemon radio433client sensorproxy \
-	net_env_mon power433control2
+	net_env_mon power433control2 buttonhandler
 
 BUILDSTAMP = $(shell echo `date '+%Y%m%d-git@'``git log --oneline -1 | cut -d' ' -f1`)
 
@@ -211,6 +211,13 @@ sensorproxy:	sensorproxy.c radio433_dev.o htu21d_lib.o bmp180_lib.o bh1750_lib.o
 
 net_env_mon:	net_env_mon.c
 	$(CC) -o $@ $^ $(CFLAGS) -lncurses
+
+###################
+# Button handlers #
+###################
+
+buttonhandler:	buttonhandler.c
+	$(CC) -o $@ $< $(CFLAGS) -lwiringPi -pthread -DBUILDSTAMP=\"$(BUILDSTAMP)\"
 
 ##################
 # Other programs #
