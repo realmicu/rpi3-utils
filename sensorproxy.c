@@ -43,8 +43,8 @@
  *          that may serve as a marker that sensor info is complete
  *
  *  Execution flow:
- *  + main thread listens to radio server and updates sensor list
- *  + client_thread accepts clients, immediately sends info and closes socket
+ *  + main thread accepts clients, immediately sends info and closes socket
+ *  + optional client_thread listens to radio server and updates sensor list
  *  + optional i2c_thread reads from I2C sensors and updates sensor list
  *
  *  Sensor list utilizes lazy timing and housekeeping, it means that obsolete
@@ -86,7 +86,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.97 (radio+i2c) server"
+#define BANNER			"SensorProxy v0.98 (radio+i2c) server"
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
 #define SERVER_PORT		5444
 #define SERVER_ADDR		"0.0.0.0"
@@ -136,14 +136,15 @@ const char *busname[] = { "(null)", "radio", "i2c" };
 const char trend[3] = { '_', '/', '\\' };
 extern char *optarg;
 extern int optind, opterr, optopt;
-volatile int debugflag, i2cdelay, clntrun, i2ctrun;
+volatile int debugflag, i2cdelay, netclrun, i2ctrun;
 volatile int mrstflag, rdelflag;
-pthread_t clntthread, i2cthread;
+pthread_t netcltthread, i2cthread;
 pid_t procpid;
 char progname[PATH_MAX + 1], logfname[PATH_MAX + 1], pidfname[PATH_MAX + 1];
 volatile int logfd, srvfd, radfd; /* files and sockets */
 sem_t sensem;		/* semaphore for sensor list updates */
 sem_t logsem;		/* log file semaphore */
+struct sockaddr_in radsin;
 
 struct radmsg {
 	time_t tsec;
@@ -212,17 +213,21 @@ struct databh1750 {
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s [-i i2cint] [-d | -l logfile] [-P pidfile] [-h ipaddr] [-p tcpport] server [port]\n\n", progname);
+	printf("Usage:\n\t%s [-i i2cint] [-d | -l logfile] [-P pidfile] [-r serverip [-p serverport]] [address [port]]\n\n", progname);
 	puts("Where:");
-	puts("\t-i i2cint   - read I2C sensors with specified interval in seconds (optional, default is skip)");
-	puts("\t-d          - debug mode, stay foreground and show activity (optional)");
-	puts("\t-l logfile  - path to log file (optional, default is none)");
-	printf("\t-P pidfile  - path to PID file (optional, default is %s%s.pid)\n", PID_DIR, progname);
-	printf("\t-h ipaddr   - IPv4 address to listen on (optional, default %s)\n", SERVER_ADDR);
-	printf("\t-p tcpport  - TCP port to listen on (optional, default is %d)\n", SERVER_PORT);
-	puts("\tserver      - IPv4 address of radio server (mandatory)");
-	printf("\tport        - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
-	puts("\nSupported devices - Radio: hyuws77th; I2C: htu21d, bmp180, bh1750");
+	puts("\t-i i2cint     - read I2C sensors with specified interval in seconds (optional, default is skip)");
+	puts("\t-d            - debug mode, stay foreground and show activity (optional)");
+	puts("\t-l logfile    - path to log file (optional, default is none)");
+	printf("\t-P pidfile    - path to PID file (optional, default is %s%s.pid)\n", PID_DIR, progname);
+	printf("\t-r serverip   - IPv4 address of radio server (optional)\n");
+	printf("\t-p serverport - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
+	printf("\taddress       - IPv4 address to listen on (optional, default %s)\n", SERVER_ADDR);
+	printf("\tport          - TCP port to listen on (optional, default is %d)\n", SERVER_PORT);
+	puts("\nSupported source devices:");
+	puts("\thyuws77th (radio) - temperature/humidity 433.92 MHz radio sensor Hyundai WS Senzor 77TH");
+	puts("\thtu21d      (i2c) - humidity/temperature local sensor HTU21D");
+	puts("\tbmp180      (i2c) - pressure/temperature local sensor BMP180");
+	puts("\tbh1750      (i2c) - light level local sensor BH1750");
 	puts("\nSignal actions: SIGHUP (log file truncate and reopen)");
 	puts("                SIGUSR1 (reset min and max values for all sensors)");
 	puts("                SIGUSR2 (delete all radio sensors, initiate re-discover)\n");
@@ -261,7 +266,7 @@ int connectRadioSrv(struct sockaddr_in *s)
 	for(;;) {
 		fd = socket(AF_INET, SOCK_STREAM, 0);
 		if (fd == -1)
-			break;	/* no socket available, system error */
+			break;	/* no socket available */
 
 		if (connect(fd, (struct sockaddr *)s, sizeof(*s)) == -1) {
 			logprintf(logfd, LOG_WARN,
@@ -323,8 +328,8 @@ void endProcess(int status)
 	struct i2centry *c;
 
 	unlink(pidfname);
-	if (clntrun)
-		pthread_cancel(clntthread);
+	if (netclrun)
+		pthread_cancel(netcltthread);
 	if (i2ctrun) {
 		pthread_cancel(i2cthread);
 		/* we do not use semaphore here, as both threads
@@ -710,48 +715,51 @@ void sensorRadioUpdate(struct radmsg *rm)
 	sem_post(&sensem);
 }
 
-/* Client accept/send/close thread */
-/* (clients are accepted, updated and disconnected immediately one by one
- *  so listen backlog should be big enough to keep them all in queue)
- */
-void *clientASCThread(void *arg)
+/* ************* */
+/* *  Threads  * */
+/* ************* */
+
+/* Radio daemon client thread */
+void *radioDaemonThread(void *arg)
 {
-	int clfd, clen;
-	struct sockaddr_in clin;
-	char msgbuf[BUFFER_SIZE + 1];
-	int len;
+	char radbuf[RADBUF_SIZE + 1];
+	char *msgptr, *msgend;
+	int msglen;
 	sigset_t blkset;
+	struct radmsg rm;
 
 	sigfillset(&blkset);
 	pthread_sigmask(SIG_BLOCK, &blkset, NULL);
 
+	/* function loop - never ends, send signal to exit */
 	for(;;) {
-		clen = sizeof(struct sockaddr_in);
-		clfd = accept(srvfd, (struct sockaddr *)&clin, &clen);
-		logprintf(logfd, LOG_INFO,
-			  "client %s [%d] connected successfully\n",
-			  inet_ntoa(clin.sin_addr), clfd);
-		if (rdelflag) {
-			sensorRadioRemoveAll();
-			rdelflag = 0;
+		do
+			msglen = recv(radfd, radbuf, RADBUF_SIZE, 0);
+		while (msglen == -1 && errno == EINTR);
+		if (msglen <= 0) {
+			close(radfd);
+			radfd = connectRadioSrv(&radsin);
+			continue;
 		}
-		sensorTableClean();
-		if (mrstflag) {
-			sensorResetMinMax();
-			mrstflag = 0;
-		}
-		len = formatMessage(msgbuf, BUFFER_SIZE);
-		if (debugflag)
-			logprintf(logfd, LOG_DEBUG,
-				  "sending message to client [%d], %d bytes\n", clfd, len);
-		if (send(clfd, msgbuf, len, MSG_NOSIGNAL) == -1) {
-			logprintf(logfd, LOG_WARN,
-				  "client [%d] write error\n", clfd);
-		}
-		close(clfd);
-		logprintf(logfd, LOG_INFO,
-			  "client [%d] disconnected\n", clfd);
-	}
+		radbuf[msglen] = 0;
+		msgptr = radbuf;
+		do {
+			msgptr = strstr(msgptr, RADMSG_HDR);
+			if (msgptr == NULL)
+				break;
+			msgend = strstr(msgptr, RADMSG_EOT);
+			if (msgend == NULL)
+				break;
+			if (sscanf(msgptr + 4, "%lu.%u;%d;%d;%d;0x%X;%d;0x%llX;",
+			    &rm.tsec, &rm.tmsec, &rm.codelen, &rm.repeats,
+			    &rm.interval, &rm.type, &rm.bits, &rm.code) != 8)
+				continue;
+			sensorTableClean();
+			sensorRadioUpdate(&rm);
+			msgptr = msgend + 5;
+		} while (msgptr < radbuf + msglen);
+		logprintf(logfd, LOG_INFO, "received update packet from server\n");
+	}	/* thread main loop ends here */
 }
 
 /* I2C sensor reading thread */
@@ -837,6 +845,10 @@ void *i2cSensorThread(void *arg)
 		sleep(i2cdelay);
 	}
 }
+
+/* ************************* */
+/* *  I2C sensor routines  * */
+/* ************************* */
 
 /* Sensor initialization */
 int initHTU21D(int idx)
@@ -982,25 +994,17 @@ int initBH1750(int idx)
 
 int main(int argc, char *argv[])
 {
+	char msgbuf[BUFFER_SIZE + 1];
 	int opt;
 	int srvport, radport;
-	struct sockaddr_in srvsin, radsin;
-	int msglen;
+	struct sockaddr_in srvsin, clin;
 	int pidfd;
-	char radbuf[RADBUF_SIZE + 1];
-	char *msgptr, *msgend;
 	struct sigaction sa;
-	struct radmsg rm;
-	int idx, ena;
+	int radflag, idx, ena;
+	int clfd, clen, len;
 
 	/* get process name */
 	strncpy(progname, basename(argv[0]), PATH_MAX);
-
-	/* show help */
-	if (argc < 2) {
-		help();
-		exit(0);
-	}
 
 	/* set PID initially so logprintf() can use it, */
 	/* the value will change after daemon forking */
@@ -1010,13 +1014,14 @@ int main(int argc, char *argv[])
 	logfd = -1;
 	srvfd = -1;
 	radfd = -1;
-	clntrun = 0;
+	netclrun = 0;
 	i2ctrun = 0;
 	mrstflag = 0;
 	rdelflag = 0;
 
 	/* get parameters */
 	debugflag = 0;
+	radflag = 0;
 	i2cdelay = 0;
 	memset((char *)&srvsin, 0, sizeof(srvsin));
 	srvsin.sin_family = AF_INET;
@@ -1024,13 +1029,14 @@ int main(int argc, char *argv[])
 	srvport = SERVER_PORT;
 	memset((char *)&radsin, 0, sizeof(radsin));
 	radsin.sin_family = AF_INET;
+	radport = 0;
 	memset(logfname, 0, PATH_MAX + 1);
 	memset(pidfname, 0, PATH_MAX + 1);
 	strcpy(pidfname, PID_DIR);
 	strcat(pidfname, progname);
 	strcat(pidfname, ".pid");
 
-	while((opt = getopt(argc, argv, "di:l:P:h:p:")) != -1) {
+	while((opt = getopt(argc, argv, "di:l:P:r:p:")) != -1) {
 		if (opt == 'd')
 			debugflag = 1;
 		else if (opt == 'i')
@@ -1039,39 +1045,47 @@ int main(int argc, char *argv[])
 			strncpy(logfname, optarg, PATH_MAX);
 		else if (opt == 'P')
 			strncpy(pidfname, optarg, PATH_MAX);
-		else if (opt == 'h') {
-			if (!inet_aton(optarg, &srvsin.sin_addr)) {
+		else if (opt == 'r') {
+			if (!inet_aton(optarg, &radsin.sin_addr)) {
 				dprintf(STDERR_FILENO, "Invalid IPv4 address specification.\n");
 				exit(EXIT_FAILURE);
 			}
+			if (!radport)
+				radport = RADIO_PORT;
+			radflag = 1;
 		}
 		else if (opt == 'p')
-			sscanf(optarg, "%d", &srvport);
+			sscanf(optarg, "%d", &radport);
 		else if (opt == '?' || opt == 'h') {
 			help();
 			exit(EXIT_FAILURE);
 		}
 	}
 
-	if (optind == argc) {
-		help();
-		exit(0);
-	}
-
+	/* parameter logic */
 	if (debugflag && logfname[0]) {
 		dprintf(STDERR_FILENO, "Flags -d and -l are mutually exclusive.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (!inet_aton(argv[optind++], &radsin.sin_addr)) {
-		dprintf(STDERR_FILENO, "Invalid IPv4 address specification.\n");
+	if (!radflag && radport) {
+		dprintf(STDERR_FILENO, "Flag -p requires -r.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (optind == argc)
-		radport = RADIO_PORT;
-	else
-		sscanf(argv[optind], "%d", &radport);
+	if (!radflag && !i2cdelay) {
+		dprintf(STDERR_FILENO, "No sensor data source selected, specify at least one (radio daemon, I2C or both).\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (optind < argc)
+		if (!inet_aton(argv[optind++], &srvsin.sin_addr)) {
+			dprintf(STDERR_FILENO, "Invalid IPv4 address specification.\n");
+			exit(EXIT_FAILURE);
+		}
+
+	if (optind < argc)
+		sscanf(argv[optind], "%d", &srvport);
 
 	srvsin.sin_port = htons(srvport);
 	radsin.sin_port = htons(radport);
@@ -1156,18 +1170,6 @@ int main(int argc, char *argv[])
 	sa.sa_handler = &signalDelRadio;
 	sigaction(SIGUSR2, &sa, NULL);
 
-	/* connect to radio server, wait/reconnect if server is down */
-	radfd = connectRadioSrv(&radsin);
-	if (radfd == -1) {
-		/* no socket means system error, exit */
-		dprintf(STDERR_FILENO, "Unable to create client socket: %s\n",
-			strerror(errno));
-		if (!debugflag)
-			logprintf(logfd, LOG_ERROR, "unable to create client socket: %s\n",
-				  strerror(errno));
-		endProcess(EXIT_FAILURE);
-	}
-
 	/* setup proxy server */
 	srvfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (srvfd == -1) {
@@ -1224,17 +1226,19 @@ int main(int argc, char *argv[])
 	memset(senstbl, 0, MAX_SENSORS * sizeof(struct sensorentry));
 	sem_init(&sensem, 0, 1);
 
-	/* start network client update thread */
-	if (pthread_create(&clntthread, NULL, clientASCThread, NULL)) {
-		if (!debugflag)
-			logprintf(logfd, LOG_ERROR, "cannot start network listener thread\n");
-		else
-			dprintf(STDERR_FILENO, "Cannot start network listener thread.\n");
-		endProcess(EXIT_FAILURE);
+	/* start network client thread (optional) */
+	if (radflag) {
+		if (pthread_create(&netcltthread, NULL, radioDaemonThread, NULL)) {
+			if (!debugflag)
+				logprintf(logfd, LOG_ERROR, "cannot start network client thread\n");
+			else
+				dprintf(STDERR_FILENO, "Cannot start network client thread.\n");
+			endProcess(EXIT_FAILURE);
+		}
+		netclrun = 1;
 	}
-	clntrun = 1;
 
-	/* start I2C sensor read thread */
+	/* start I2C sensor read thread (optional) */
 	if (i2cdelay) {
 		idx = 0;
 		wiringPiSetupGpio();
@@ -1263,31 +1267,33 @@ int main(int argc, char *argv[])
 
 	/* function loop - never ends, send signal to exit */
 	for(;;) {
-		do
-			msglen = recv(radfd, radbuf, RADBUF_SIZE, 0);
-		while (msglen == -1 && errno == EINTR);
-		if (msglen <= 0) {
-			close(radfd);
-			radfd = connectRadioSrv(&radsin);
-			continue;
+		/* clients are accepted, updated and disconnected immediately
+		 * one by one so listen backlog should be big enough to keep
+		 * them all in queue */
+		clen = sizeof(struct sockaddr_in);
+		clfd = accept(srvfd, (struct sockaddr *)&clin, &clen);
+		logprintf(logfd, LOG_INFO,
+			  "client %s [%d] connected successfully\n",
+			  inet_ntoa(clin.sin_addr), clfd);
+		if (rdelflag) {
+			sensorRadioRemoveAll();
+			rdelflag = 0;
 		}
-		radbuf[msglen] = 0;
-		msgptr = radbuf;
-		do {
-			msgptr = strstr(msgptr, RADMSG_HDR);
-			if (msgptr == NULL)
-				break;
-			msgend = strstr(msgptr, RADMSG_EOT);
-			if (msgend == NULL)
-				break;
-			if (sscanf(msgptr + 4, "%lu.%u;%d;%d;%d;0x%X;%d;0x%llX;",
-			    &rm.tsec, &rm.tmsec, &rm.codelen, &rm.repeats,
-			    &rm.interval, &rm.type, &rm.bits, &rm.code) != 8)
-				continue;
-			sensorTableClean();
-			sensorRadioUpdate(&rm);
-			msgptr = msgend + 5;
-		} while (msgptr < radbuf + msglen);
-		logprintf(logfd, LOG_INFO, "received update packet from server\n");
+		sensorTableClean();
+		if (mrstflag) {
+			sensorResetMinMax();
+			mrstflag = 0;
+		}
+		len = formatMessage(msgbuf, BUFFER_SIZE);
+		if (debugflag)
+			logprintf(logfd, LOG_DEBUG,
+				  "sending message to client [%d], %d bytes\n", clfd, len);
+		if (send(clfd, msgbuf, len, MSG_NOSIGNAL) == -1) {
+			logprintf(logfd, LOG_WARN,
+				  "client [%d] write error\n", clfd);
+		}
+		close(clfd);
+		logprintf(logfd, LOG_INFO,
+			  "client [%d] disconnected\n", clfd);
 	}
 }
