@@ -274,10 +274,13 @@ void help(void)
 	puts("\tscript      - full path to program called for button events\n");
 	puts("\tgpiostr     - list of comma-separated triplets: gpio_bcm_pin:active_high:text_label");
 	printf("\t              that describe GPIO-connected buttons; text label is max %d chars,\n", BUTTON_LABEL);
-	printf("\t              up to %d GPIOs are supported\n\n", GPIO_PINS);
+	printf("\t              active_high is 0 or 1, up to %d GPIOs are supported\n\n", GPIO_PINS);
 	puts("\tcodestr     - list of comma-separated triplets: code_hex:device_type_hex:text_label");
 	printf("\t              that describe remote radio buttons; text label is max %d chars,\n", BUTTON_LABEL);
 	printf("\t              up to %d different codes are supported\n", MAX_RADIO_CODES);
+	puts("\nSupported radio device types:");
+	puts("\t0x0101      - remote for radio-controlled power outlets (433.92 MHz, i.e. Kemot URZ series)");
+	puts("\t0x0201      - remote temperature/humidity sensor (433.92 MHz, Hyundai WS Senzor 77TH)");
 	puts("\nSignal actions: SIGHUP (log file truncate and reopen)\n");
 }
 
