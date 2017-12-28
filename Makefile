@@ -7,10 +7,10 @@ CFLAGS = -I. -Wunused
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
-	power433send power433control bh1750_test env_mon ssd1306_test \
+	power433send power433ctrlite bh1750_test env_mon ssd1306_test \
 	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer \
 	radio433sniffer radio433daemon radio433client sensorproxy \
-	net_env_mon power433control2 buttonhandler
+	net_env_mon power433control buttonhandler
 
 BUILDSTAMP = $(shell echo `date '+%Y%m%d-git@'``git log --oneline -1 | cut -d' ' -f1`)
 
@@ -133,7 +133,7 @@ power433sniffer:	power433sniffer.c power433_lib.o
 power433send:		power433send.c power433_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(POWER433_EXTRA_LIBS)
 
-power433control:	power433control.c power433_lib.o
+power433ctrlite:	power433ctrlite.c power433_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(POWER433_EXTRA_LIBS)
 
 ##################
@@ -199,7 +199,7 @@ radio433daemon:	radio433daemon.c radio433_lib.o radio433_dev.o
 radio433client:	radio433client.c radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
-power433control2:	power433control2.c radio433_lib.o radio433_dev.o
+power433control:	power433control.c radio433_lib.o radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
 
 ##################################

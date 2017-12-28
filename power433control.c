@@ -12,7 +12,15 @@
 
 #include <wiringPi.h>
 
-#include "power433_lib.h"
+#include "radio433_lib.h"
+#include "radio433_dev.h"
+
+#define	CODE_RETRANS	12	/* set to >0 override default */
+
+/*
+ Based on original power433control.c .
+ This version used radio433 framework and is currently supported.
+ */
 
 struct cmd {
 	unsigned int sys, dev, oper;
@@ -145,7 +153,7 @@ int main(int argc, char *argv[])
 	wiringPiSetupGpio();
 
 	/* set transmission only */
-	Power433_init(gpio, -1);
+	Radio433_init(gpio, -1);
 
 	/* sending codes */
 	for(i = 0; i < ncode; i++) {
@@ -156,7 +164,8 @@ int main(int argc, char *argv[])
 		       codes[i].dev & POWER433_DEVICE_D ? "D" : "",
 		       codes[i].dev & POWER433_DEVICE_E ? "E" : "",
 		       codes[i].sys, codes[i].oper ? "ON" : "OFF");
-		Power433_sendCommand(codes[i].sys, codes[i].dev, codes[i].oper);
+		Radio433_sendDeviceCode(Radio433_pwrGetCode(codes[i].sys, codes[i].dev, codes[i].oper),
+					RADIO433_DEVICE_KEMOTURZ1226, CODE_RETRANS);
 	}
 
 	free(codes);
