@@ -183,8 +183,8 @@ int main(int argc, char *argv[])
 	Radio433_init(gpio, -1);
 
 	/* print info */
-	printf("Sending %d commands (%d codes each) via RF transmitter connected to GPIO pin %d.\n",
-	       ncode, cnt, gpio);
+	printf("Sending %d command%s (code retransmissions: %d) via RF transmitter connected to GPIO pin %d.\n",
+	       ncode, ncode > 1 ? "s" : "", cnt, gpio);
 
 	/* sending codes */
 	for(i = 0; i < ncode; i++) {
