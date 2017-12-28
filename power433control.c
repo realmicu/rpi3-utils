@@ -16,6 +16,10 @@
 #include "radio433_dev.h"
 
 #define	CODE_RETRANS	12	/* set to >0 override default */
+#define	DEF_GPIO_TX	20	/* RF TX pin */
+
+extern char *optarg;
+extern int optind, opterr, optopt;
 
 /*
  Based on original power433control.c .
@@ -29,10 +33,11 @@ struct cmd {
 /* Show help */
 void help(char *progname)
 {
-	printf("Usage:\n\t%s {gpio} {oper0} [oper1] ...\n\n", progname);
+	printf("\nUsage:\n\t%s [-g gpio] [-c count] {oper0} [oper1] ...\n\n", progname);
 	puts("Where:");
-	puts("\tgpio\t - GPIO pin with external RF transmitter connected (mandatory)");
-	puts("\toper\t - operation defined as system:device:{on|off} (at least one)");
+	printf("\t-g gpio  - BCM GPIO pin with external RF transmitter connected (optional, default is %d)\n", DEF_GPIO_TX);
+	printf("\t-c count - number of codes sent in one transmission (optional, default is %d)\n", CODE_RETRANS);
+	puts("\toper     - operation defined as system:device:{on|off} (at least one)\n");
 }
 
 /* change sheduling priority */
@@ -100,26 +105,44 @@ unsigned int getDevMask(char *s)
 
 int main(int argc, char *argv[])
 {
-	int i, gpio, ncode;
+	int i, gpio, cnt, ncode;
 	struct cmd *codes;
 	char parmbuf[16];
 	char *pdev, *pbtn;
+	int opt;
 
 	/* show help */
-	if (argc < 3) {
+	if (argc < 2) {
 		help(argv[0]);
 		exit(0);
 	}
 
 	/* get parameters */
-	sscanf(argv[1], "%d", &gpio);
+	gpio = DEF_GPIO_TX;
+	cnt = CODE_RETRANS;
+	while((opt = getopt(argc, argv, "g:c:")) != -1) {
+		if (opt == 'g')
+			sscanf(optarg, "%d", &gpio);
+		else if (opt == 'c')
+			sscanf(optarg, "%d", &cnt);
+		else if (opt == '?' || opt == 'h') {
+			help(argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	/* show help */
+	if (optind == argc) {
+		help(argv[0]);
+		exit(0);
+	}
 
 	/* get command codes */
 	ncode = 0;
-	codes = (struct cmd *)malloc((argc - 2) * sizeof(struct cmd));
-	for(i = 0; i < argc - 2; i++) {
+	codes = (struct cmd *)malloc((argc - optind) * sizeof(struct cmd));
+	for(i = optind; i < argc; i++) {
 		memset(parmbuf, 0, 16);
-		strncpy(parmbuf, argv[i + 2], 15);
+		strncpy(parmbuf, argv[i], 15);
 		pdev = splitArg(parmbuf);
 		if (!pdev)
 			continue;
@@ -138,15 +161,19 @@ int main(int argc, char *argv[])
 				continue;
 		} else
 			continue;
-
 		ncode++;
+	}
+
+	if (!ncode) {
+                fprintf(stderr, "No valid codes specified. Exiting.\n");
+                exit(EXIT_FAILURE);
 	}
 
         /* change scheduling priority */
         if (changeSched()) {
                 fprintf(stderr, "Unable to change process scheduling priority: %s\n",
                         strerror (errno));
-                exit(-1);
+                exit(EXIT_FAILURE);
         }
 
 	/* initialize WiringPi library - use BCM GPIO numbers */
@@ -154,6 +181,10 @@ int main(int argc, char *argv[])
 
 	/* set transmission only */
 	Radio433_init(gpio, -1);
+
+	/* print info */
+	printf("Sending %d commands (%d codes each) via RF transmitter connected to GPIO pin %d.\n",
+	       ncode, cnt, gpio);
 
 	/* sending codes */
 	for(i = 0; i < ncode; i++) {
@@ -165,7 +196,7 @@ int main(int argc, char *argv[])
 		       codes[i].dev & POWER433_DEVICE_E ? "E" : "",
 		       codes[i].sys, codes[i].oper ? "ON" : "OFF");
 		Radio433_sendDeviceCode(Radio433_pwrGetCode(codes[i].sys, codes[i].dev, codes[i].oper),
-					RADIO433_DEVICE_KEMOTURZ1226, CODE_RETRANS);
+					RADIO433_DEVICE_KEMOTURZ1226, cnt);
 	}
 
 	free(codes);
