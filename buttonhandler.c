@@ -71,7 +71,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"ButtonHandler v0.9"
+#define BANNER			"ButtonHandler v0.92"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -599,7 +599,7 @@ int main(int argc, char *argv[])
 	int radport;
 	int pidfd;
 	struct sigaction sa;
-	char **cptr, *coptr, plbl[BUTTON_LABEL + 1];
+	char *tmparg, **cptr, *coptr, plbl[BUTTON_LABEL + 1];
 	int pgpio, pactv, pcode, ptype;
 	char username[MAX_USERNAME + 1];
 	int gval;
@@ -671,7 +671,8 @@ int main(int argc, char *argv[])
 		else if (opt == 'p')
 			sscanf(optarg, "%d", &radport);
 		else if (opt == 'g') {
-			cptr = &optarg;
+			tmparg = strdup(optarg);
+			cptr = &tmparg;
 			while (*cptr != NULL) {
 				coptr = strsep(cptr, ",");
 				memset(plbl, 0, BUTTON_LABEL + 1);
@@ -688,9 +689,11 @@ int main(int argc, char *argv[])
 						gpiodlen++;
 					}
 			}
+			free(tmparg);
 		}
 		else if (opt == 'c') {
-			cptr = &optarg;
+			tmparg = strdup(optarg);
+			cptr = &tmparg;
 			while (*cptr != NULL) {
 				coptr = strsep(cptr, ",");
 				memset(plbl, 0, BUTTON_LABEL + 1);
@@ -707,6 +710,7 @@ int main(int argc, char *argv[])
 						raddlen++;	
 					}
 				}
+			free(tmparg);
 		}
 		else if (opt == '?' || opt == 'h') {
 			help();
