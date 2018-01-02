@@ -1126,7 +1126,7 @@ int main(int argc, char *argv[])
 	uid = getuid();
 	gid = getgid();
 	if (username[0]) {
-		if (uid)
+		if (!uid)
 			dropRootPriv(username, &uid, &gid);
 		else {
 			dprintf(STDERR_FILENO, "Flag -u is valid only when started by root.\n");
