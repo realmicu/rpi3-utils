@@ -29,6 +29,15 @@ static const int reswait[4] = { BH1750_LX_RES_H_MAX_TIME_MS, \
 
 static int datawait;	/* current wait time for data */
 
+/* BH1750: device initialization (for RPi I2C bus) */
+int BH1750_initPi(int i2caddr)
+{
+	int fd;
+
+	fd = wiringPiI2CSetup(i2caddr > 0 ? i2caddr : BH1750_I2C_ADDR);
+	return fd < 0 ? -1 : fd;
+}
+
 /* BH1750: device control */
 void BH1750_powerDown(int fd)
 {
