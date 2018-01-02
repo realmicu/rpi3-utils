@@ -859,7 +859,8 @@ int initHTU21D(int idx)
 	struct datahtu21d *dht2;
 	double h, t;
 
-	fd = wiringPiI2CSetup(HTU21D_I2C_ADDR);
+	/* Initialize device with default I2C address */
+	fd = HTU21D_initPi(0);
 	if (fd < 0)
 		return -1;
 
@@ -905,7 +906,8 @@ int initBMP180(int idx)
 	struct databmp180 *dbm1;
 	double p, t;
 
-	fd = wiringPiI2CSetup(BMP180_I2C_ADDR);
+	/* Initialize device with default I2C address */
+	fd = BMP180_initPi(0);
 	if (fd < 0)
 		return -1;
 
@@ -954,7 +956,8 @@ int initBH1750(int idx)
 	struct databh1750 *dbh1;
 	double l;
 
-	fd = wiringPiI2CSetup(BH1750_I2C_ADDR);
+	/* Initialize device with default I2C address */
+	fd = BH1750_initPi(0);
 	if (fd < 0)
 		return -1;
 
