@@ -73,6 +73,10 @@
 #include <stdarg.h>
 #include <linux/limits.h>
 #include <fcntl.h>
+#include <linux/limits.h>  /* for NGROUPS_MAX */
+#include <pwd.h>        /* for getpwnam_r() */
+#include <grp.h>        /* for getgrouplist() and setgroups() */
+
 
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
@@ -86,7 +90,9 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.98 (radio+i2c) server"
+#define BANNER			"SensorProxy v0.98.1 (radio+i2c) server"
+#define MAX_USERNAME		32
+#define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
 #define SERVER_PORT		5444
 #define SERVER_ADDR		"0.0.0.0"
@@ -213,9 +219,10 @@ struct databh1750 {
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s [-i i2cint] [-d | -l logfile] [-P pidfile] [-r serverip [-p serverport]] [address [port]]\n\n", progname);
+	printf("Usage:\n\t%s [-i i2cint] [-u username] [-d | -l logfile] [-P pidfile] [-r serverip [-p serverport]] [address [port]]\n\n", progname);
 	puts("Where:");
 	puts("\t-i i2cint     - read I2C sensors with specified interval in seconds (optional, default is skip)");
+	puts("\t-u username   - name of the user to switch to (optional, valid only if run by root)");
 	puts("\t-d            - debug mode, stay foreground and show activity (optional)");
 	puts("\t-l logfile    - path to log file (optional, default is none)");
 	printf("\t-P pidfile    - path to PID file (optional, default is %s%s.pid)\n", PID_DIR, progname);
@@ -404,6 +411,50 @@ void signalDelRadio(int sig)
 	logprintf(logfd, LOG_NOTICE, "signal %d received\n", sig);
 	logprintf(logfd, LOG_NOTICE, "all radio sensors will be deleted with next read\n", sig);
 	rdelflag = 1;
+}
+
+/* drop super-user privileges */
+int dropRootPriv(const char *username, uid_t *uid, gid_t *gid)
+{
+	struct passwd pw, *pwptr;
+	char buf[1024];
+	gid_t grps[MAX_NGROUPS];
+	int ngrp;
+
+	/* get user & group ID */
+	errno = 0;
+	pwptr = NULL;
+	if (getpwnam_r(username, &pw, buf, 1024, &pwptr))
+		return -1;
+	if (pwptr == NULL) {
+		errno = EUSERS;
+		return -1;
+        }
+	/* set supplemental groups */
+	ngrp = MAX_NGROUPS;
+	if (getgrouplist(username, pw.pw_gid, grps, &ngrp) < 0)
+		return -1;
+	if (setgroups(ngrp, grps))
+		return -1;
+	/* start with GID then UID */
+	if (setresgid(pw.pw_gid, pw.pw_gid, pw.pw_gid))
+		return -1;
+	if (setresuid(pw.pw_uid, pw.pw_uid, pw.pw_uid))
+		return -1;
+	*uid = pw.pw_uid;
+	*gid = pw.pw_gid;
+	return 0;
+}
+
+/* change sheduling priority */
+int changeSched(void)
+{
+	struct sched_param s;
+
+	s.sched_priority = 0;
+	if(sched_setscheduler(0, SCHED_BATCH, &s))
+		return -1;
+	return 0;
 }
 
 /* Format network message */
@@ -1005,6 +1056,9 @@ int main(int argc, char *argv[])
 	struct sigaction sa;
 	int radflag, idx, ena;
 	int clfd, clen, len;
+	uid_t uid;
+	gid_t gid;
+	char username[MAX_USERNAME + 1];
 
 	/* get process name */
 	strncpy(progname, basename(argv[0]), PATH_MAX);
@@ -1026,6 +1080,7 @@ int main(int argc, char *argv[])
 	debugflag = 0;
 	radflag = 0;
 	i2cdelay = 0;
+	memset(username, 0, MAX_USERNAME + 1);
 	memset((char *)&srvsin, 0, sizeof(srvsin));
 	srvsin.sin_family = AF_INET;
 	inet_aton(SERVER_ADDR, &srvsin.sin_addr);
@@ -1039,9 +1094,11 @@ int main(int argc, char *argv[])
 	strcat(pidfname, progname);
 	strcat(pidfname, ".pid");
 
-	while((opt = getopt(argc, argv, "di:l:P:r:p:")) != -1) {
+	while((opt = getopt(argc, argv, "du:i:l:P:r:p:")) != -1) {
 		if (opt == 'd')
 			debugflag = 1;
+		else if (opt == 'u')
+			strncpy(username, optarg, MAX_USERNAME);
 		else if (opt == 'i')
 			sscanf(optarg, "%d", &i2cdelay);
 		else if (opt == 'l')
@@ -1066,6 +1123,17 @@ int main(int argc, char *argv[])
 	}
 
 	/* parameter logic */
+	uid = getuid();
+	gid = getgid();
+	if (username[0]) {
+		if (uid)
+			dropRootPriv(username, &uid, &gid);
+		else {
+			dprintf(STDERR_FILENO, "Flag -u is valid only when started by root.\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	if (debugflag && logfname[0]) {
 		dprintf(STDERR_FILENO, "Flags -d and -l are mutually exclusive.\n");
 		exit(EXIT_FAILURE);
@@ -1109,12 +1177,26 @@ int main(int argc, char *argv[])
 	}
 	sem_init(&logsem, 0, 1);
 
+	/* change scheduling priority */
+	if (changeSched()) {
+		if (!debugflag)
+			logprintf(logfd, LOG_ERROR, "unable to change process scheduling priority: %s\n",
+				  strerror(errno));
+		else
+			dprintf(STDERR_FILENO, "Unable to change process scheduling priority: %s\n",
+				strerror (errno));
+		endProcess(EXIT_FAILURE);
+	}
+
 	/* put banner in log */
 #ifdef BUILDSTAMP
 	logprintf(logfd, LOG_NOTICE, "starting %s build %s\n", BANNER, BUILDSTAMP);
 #else
 	logprintf(logfd, LOG_NOTICE, "starting %s\n", BANNER);
 #endif
+
+	/* show UID/GID */
+	logprintf(logfd, LOG_NOTICE, "running as UID=%ld GID=%ld\n", uid, gid);
 
 	/* check if pid file exists */
 	pidfd = open(pidfname, O_PATH, FILE_UMASK);
