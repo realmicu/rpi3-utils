@@ -51,12 +51,25 @@ static short cal_AC1, cal_AC2, cal_AC3, cal_B1, cal_B2, cal_MB, cal_MC, cal_MD;
 static unsigned short cal_AC4, cal_AC5, cal_AC6;
 
 /* BMP180: device initialization (for RPi I2C bus) */
-int BMP180_initPi(int i2caddr)
+int BMP180_initPi(int *i2caddr)
 {
-	int fd;
+	int addr, fd;
 
-	fd = wiringPiI2CSetup(i2caddr > 0 ? i2caddr : BMP180_I2C_ADDR);
-	return fd < 0 ? -1 : fd;
+	addr = BMP180_I2C_ADDR;
+
+	if (i2caddr != NULL)
+		if (*i2caddr > 0)
+			addr = *i2caddr;
+
+	fd = wiringPiI2CSetup(addr);
+
+	if (fd < 0)
+		return -1;
+
+	if (i2caddr != NULL)
+		*i2caddr = addr;
+
+	return fd;
 }
 
 /* BMP180: check if sensor chip is available */

@@ -13,9 +13,10 @@
 #define BH1750_MODE_RES_L	0x3		/* L-Resolution Mode */
 
 /* Device initialization (for RPi I2C bus) */
-/* For default address, use 0 as argument */
+/* For default address, use NULL or variable with value 0 */
 /* Returns < 0 if initialization failed, otherwise fd */
-int BH1750_initPi(int i2caddr);
+/* On success, argument variable is set to I2C address */
+int BH1750_initPi(int *i2caddr);
 
 /* Device control */
 void BH1750_powerDown(int fd);

@@ -11,9 +11,10 @@
 #define BMP180_OSS_MODE_UHR	3		/* ultra high resolution */
 
 /* Device initialization (for RPi I2C bus) */
-/* For default address, use 0 as argument */
+/* For default address, use NULL or variable with value 0 */
 /* Returns < 0 if initialization failed, otherwise fd */
-int BMP180_initPi(int i2caddr);
+/* On success, argument variable is set to I2C address */
+int BMP180_initPi(int *i2caddr);
 
 /* Check if sensor chip is available */
 int BMP180_isPresent(int fd);

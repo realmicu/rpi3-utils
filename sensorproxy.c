@@ -911,7 +911,7 @@ int initHTU21D(int idx)
 	double h, t;
 
 	/* Initialize device with default I2C address */
-	fd = HTU21D_initPi(0);
+	fd = HTU21D_initPi(NULL);
 	if (fd < 0)
 		return -1;
 
@@ -958,7 +958,7 @@ int initBMP180(int idx)
 	double p, t;
 
 	/* Initialize device with default I2C address */
-	fd = BMP180_initPi(0);
+	fd = BMP180_initPi(NULL);
 	if (fd < 0)
 		return -1;
 
@@ -1008,7 +1008,7 @@ int initBH1750(int idx)
 	double l;
 
 	/* Initialize device with default I2C address */
-	fd = BH1750_initPi(0);
+	fd = BH1750_initPi(NULL);
 	if (fd < 0)
 		return -1;
 

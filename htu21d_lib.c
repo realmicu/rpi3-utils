@@ -26,12 +26,25 @@
 /* ********* */
 
 /* HTU21D: device initialization (for RPi I2C bus) */
-int HTU21D_initPi(int i2caddr)
+int HTU21D_initPi(int *i2caddr)
 {
-	int fd;
+	int addr, fd;
 
-	fd = wiringPiI2CSetup(i2caddr > 0 ? i2caddr : HTU21D_I2C_ADDR);
-	return fd < 0 ? -1 : fd;
+	addr = HTU21D_I2C_ADDR;
+
+	if (i2caddr != NULL)
+		if (*i2caddr > 0)
+			addr = *i2caddr;
+
+	fd = wiringPiI2CSetup(addr);
+
+	if (fd < 0)
+		return -1;
+
+	if (i2caddr != NULL)
+		*i2caddr = addr;
+
+	return fd;
 }
 
 /* Soft reset */
