@@ -1,0 +1,155 @@
+.TH radio433daemon "8" "March 2017" "mrutil Package" "Raspik Utilities"
+.SH NAME
+radio433daemon \- radio code receiver and server
+.SH SYNOPSIS
+.B radio433daemon -g
+.I gpio
+[
+.B -u
+.I user
+] [
+.B -d
+|
+.B -l
+.I logfile
+] [
+.B -P
+.I pidfile
+] [
+.B -L
+.I led
+] [
+.B -h
+.I ipaddr
+] [
+.B -p
+.I tcpport
+]
+.SH DESCRIPTION
+This program watches GPIO line connected to radio receiver (for example
+popular and cheap 433.92 MHz boards for Arduino / Raspberry Pi) and searches
+radio traffic for known OOK (On-Off-Keying) modulated signals.
+From network side it accepts TCP connections from clients and updates them
+with decoded signals as soon as they arrive.
+.B radio433daemon
+is intented to serve as a proxy between radio receiver and programs,
+allowing many of them to have simultaneous read-only access to
+receiving medium.
+.PP
+Each client connected to
+.B radio433daemon
+server receives text message with decoded signal. Server does not
+disconnect any of the clients. Channel is open and client gets messages
+until it closes communication socket.
+.PP
+Received signal is classified and decoded. No checksums are verified and
+recurring transmissions are not cumulated - it is up to client to perform
+validation, further analysis and consolidation of received messages.
+One such example is
+.B radio433client
+utility that recognizes and displays messages for some known remote devices.
+.SH MESSAGE FORMAT
+For each received and decoded transmission, server sends following text message
+to all connected clients:
+.PP
+.I <RX>timestamp;length;retrans;interval;type;bits;code;<ZZ>
+.TP
+.B <RX>
+marks start of message
+.TP
+.B timestamp
+local time of message in seconds.milliseconds since Epoch
+.TP
+.B length
+transmission length in milliseconds
+.TP
+.B retrans
+number of expected retransmissions (based on message type)
+.TP
+.B interval
+expected interval between retransmissions in milliseconds or 0 if unknown or
+not applicable (for example remote button) (based on message type)
+.TP
+.B type
+device type that sends signal, see
+.I Supported Radio Sources
+below (16-bit hex number prefixed with 0x)
+.TP
+.B bits
+valid bits in code
+.TP
+.B code
+64-bit code in hex format (starts with 0x, payload may be smaller so always
+verify
+.I bits
+field)
+.TP
+.B <ZZ>
+end of message
+.SH SUPPORTED RADIO SOURCES
+Program recognizes and decodes messages from following sources:
+.TP
+.I 0x0101
+Wireless outdoor temperature and humidity sensor Hyundai WS Senzor 77TH
+and compatible
+.TP
+.I 0x0201
+Remote control for power sockets type Kemot URZ1226 and compatible
+.PP
+.I Note:
+Many other devices can produce signals compatible with one of above encodings.
+It is up to client program to further classify such transmission based on data
+provided in decoded message (code checksum and masking etc).
+.SH OPTIONS
+.TP
+.BI "-g" " gpio"
+GPIO pin (in BCM order) with external RF receiver data output connected
+.TP
+.BI "-u" " user"
+(optional) name (not uid) of the user to switch to after initialization,
+instructs program to drop super-user privileges permanently
+.TP
+.B "-d"
+(optional) debug mode, stay foreground and print activity on stdout
+.TP
+.BI "-l" " logfile"
+(optional) path to log file (default is none - nothing is logged)
+.TP
+.BI "-P" " pidfile"
+(optional) path to PID file (default is /var/run/radio433daemon.pid)
+.TP
+.BI "-L" " led"
+(optional) enable LED that signals packet receiving, use 2 colon-separated values
+.I gpio:act
+notation where
+.I gpio
+is BCM GPIO pin with LED attached and
+.I act
+is 0 for active low or 1 for active high setup
+.TP
+.BI "-h" " ipaddr"
+(optional) IPv4 address to listen on (default is any, 0.0.0.0)
+.TP
+.BI "-p" " tcpport"
+(optional) TCP port to listen on (default is 5433)
+.SH BUGS
+None so far.
+.PP
+.I Important note:
+Please be aware that program relies on accurate timing. GPIO state changes are
+measured with microseconds accuracy. It may seem inappropriate to implement OOK radio
+decoding in software on a multitasking system, but in practice it works quite well and
+benefits from multi-threaded architecture to simultaneously record and classify signals
+with different bit encoding schemas. However it is strongly recommended to run operating
+system with stable clock frequency: fixed-clock CPU governors like
+.B powersave
+or
+.B performance
+yield far more better signal recognition than
+.B ondemand
+one does. Also, systems under high load may suffer worse signal processing due to more
+stress imposed on CPUs.
+.SH SEE ALSO
+power433control(1), radio433client(1), buttonhandler(8), sensorproxy(8)
+.SH AUTHOR
+Michal 'MiCu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
