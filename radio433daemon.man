@@ -132,6 +132,9 @@ is 0 for active low or 1 for active high setup
 .TP
 .BI "-p" " tcpport"
 (optional) TCP port to listen on (default is 5433)
+.SH SIGNALS
+Sending SIGHUP signal instructs program to truncate and reopen its log file, which is
+useful during log rotation (for example by logrotate utility).
 .SH BUGS
 None so far.
 .PP
