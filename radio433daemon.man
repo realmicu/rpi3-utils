@@ -1,4 +1,4 @@
-.TH radio433daemon "8" "March 2017" "mrutil Package" "Raspik Utilities"
+.TH radio433daemon "8" "March 2017" "raspik-utils" "Raspik Utilities by Micu"
 .SH NAME
 radio433daemon \- radio code receiver and server
 .SH SYNOPSIS
@@ -6,7 +6,7 @@ radio433daemon \- radio code receiver and server
 .I gpio
 [
 .B -u
-.I user
+.I username
 ] [
 .B -d
 |
@@ -105,8 +105,8 @@ provided in decoded message (code checksum and masking etc).
 .BI "-g" " gpio"
 GPIO pin (in BCM order) with external RF receiver data output connected
 .TP
-.BI "-u" " user"
-(optional) name (not uid) of the user to switch to after initialization,
+.BI "-u" " username"
+(optional) name of the user to switch to after initialization,
 instructs program to drop super-user privileges permanently
 .TP
 .B "-d"
@@ -155,4 +155,4 @@ stress imposed on CPUs.
 .SH SEE ALSO
 power433control(1), radio433client(1), buttonhandler(8), sensorproxy(8)
 .SH AUTHOR
-Michal 'MiCu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
+Michal 'Micu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
