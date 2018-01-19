@@ -1,0 +1,274 @@
+.TH buttonhandler "8" "December 2017" "raspik-utils" "Raspik Utilities by Micu"
+.SH NAME
+buttonhandler - button event dispatcher
+.SH SYNOPSIS
+.B buttonhandler
+[
+.B -u
+.I username
+] [
+.B -d
+|
+.B -l
+.I logfile
+] [
+.B -P
+.I pidfile
+] [
+.B -r
+.I radioip
+[
+.B -p
+.I radioport
+]
+.B -c
+.I codestring
+] [
+.B -g
+.I gpiostring
+]
+.B program
+.SH DESCRIPTION
+This program intercepts button events from GPIO lines and remote radio controllers
+and runs a defined binary or script, called event handler, every time such event
+is triggered. Information about event (such as source, key state, seconds since last
+change) is passed to handler via command line parameters.
+.PP
+One source of actions are locally connected GPIO buttons. These are usually simple
+on/off switches that make GPIO pin to change state from high to low (active low
+devices that use pull-up resistors) or from low to high (active high circuits with
+pull-down resistors). For now up to 28 such buttons of either type are supported,
+which is the number of Raspberry Pi 3 usable GPIO lines. Program contains simple 
+debouncing mitigation in software so no special circuitry is required.
+.PP
+Another source of events is
+.B radio433daemon
+server which sends intercepted radio codes through network socket.
+.B buttonhandler
+can handle up to 32 different codes. Radio buttons, when active (pressed), send
+continuous stream of repeated identical transmissions until deactivated (released).
+Basic compensaton for radio interference is in place, so many short interruptions in
+code retransmission do not generate new events and signal flow is still recognized
+as one key action.
+.SH SUPPORTED RADIO DEVICES
+Program accept following radio sources as valid device type:
+.TP
+.I 0x0101
+Wireless outdoor temperature and humidity sensor Hyundai WS Senzor 77TH
+and compatible
+.TP
+.I 0x0201
+Remote control for power sockets type Kemot URZ1226 and compatible
+.PP
+.I Note:
+Program is designed to handle button keypresses, so it is of questionable use to react to
+specific weather sensor codes. Nevertheless daemon does not prefer any radio source and
+can trigger action on such event with no problem at all.
+.PP
+.I Important note:
+Although remotely controlled power sockets accept only codes that comply to specific format
+(for example interleaving data bits with 0's or containing valid checksum), any code that
+has the same modulation type and data length can be configured to trigger event.
+Any universal remote with custom codes programmed is supported as long as it emits compatible signals.
+.SH OPTIONS
+.TP
+.BI "-u" " username"
+(optional) name of the user to switch to after initialization,
+instructs program to drop
+.I effective
+super-user privileges permanently (real ones are kept so handler program
+is always executed as root)
+.TP
+.B "-d"
+(optional) debug mode, stay foreground and print activity on stdout
+.TP
+.BI "-l" " logfile"
+(optional) path to log file (default is none - nothing is logged)
+.TP
+.BI "-P" " pidfile"
+(optional) path to PID file (default is /var/run/buttonhandler.pid)
+.TP
+.BI "-r" " radioip"
+IPv4 address of
+.B radio433daemon
+server (if not specified, do not contact daemon)
+.TP
+.BI "-p" " radioport"
+(optional) TCP port of
+.B radio433daemon
+server (default is 5433)
+.TP
+.BI "-c" " codestring"
+(optional) radio codes definition string, see below
+.TP
+.BI "-g" " gpiostring"
+(optional) GPIO buttons definition string, see below
+.TP
+.B program
+full path to event handler (usually shell script), see below for runtime arguments
+passed to this executable on button event
+.TP
+.I Note:
+Please specify at least one event data source using
+.B -g
+or
+.B -r
+&
+.B -c
+parameters, otherwise program will refuse to run for obvious reason.
+.SH BUTTON DEFINITION
+GPIO string supplied after
+.B -g
+parameter consists of one or more comma-separated triplets:
+.PP
+.I gpio_bcm_pin:active_high:text_label
+.PP
+where:
+.TP
+.I gpio_bcm_pin
+GPIO pin number (in BCM order), up to 28 GPIO lines are supported
+.TP
+.I active_high
+GPIO level when button is active (0 for active low, 1 for active high circuits)
+.TP
+.I text_label
+user-defined string (up to 15 chars) that uniquely identifies button for handler program
+.TP
+Example (3 local buttons):
+5:0:button_green,13:1:button_blue,19:0:button_red
+.PP
+Radio codes string for
+.B -c
+flag has the same convention (comma-separated triplets) but different source fields:
+.PP
+.I code_hex:device_type_hex:text_label
+.PP
+where:
+.TP
+.I code_hex
+code sent when remote button is active (hexadecimal, up to 64-bit, in "0x" notation),
+maximum 32 different codes are supported
+.TP
+.I device_type_hex
+remote device type (hexadecimal, up to 16-bit with "0x" prefix, see
+.I SUPPORTED RADIO DEVICES
+above)
+.TP
+.I text_label
+user-defined string (up to 15 chars) that uniquely identifies button for handler program
+.TP
+Example (4 buttons on remote control):
+0x414541:0x101:button_up,0x415144:0x101:button_down,0x415441:0x101:button_left,0x415504:0x101:button_right
+.SH EVENT HANDLER
+.I Important:
+Event handler is
+.I ALWAYS
+executed as super-user (uid and gid are 0), even when
+.B buttonhandler
+is running with lower effective privileges (as recommended).
+.PP
+Event handler is usually a bash (or Perl, Python etc) script, but can be in any valid
+executable format. It gets executed every time
+.B buttonhandler
+receives an event from known (defined via command-line parameters) source. Please note
+that handler is executed
+.I asynchronously
+- calls are not queued by
+.B buttonhandler
+and daemon does not wait for one program instance to complete before launching another
+copy. It is possible that long-running handler process may not finish until next
+event comes, making multiple copies of handler script/binary present in system.
+It is up to handler to provide any sort of locking mechanism if concurrency is not desired.
+.B buttonhandler
+is however designed to guarantee that for every single source, events generated by that source are
+processed in FIFO order and handler program is always called that way.
+.PP
+Event action description is passed to handler program as arguments.
+.br
+First 4 are general ones and identical for all sources:
+.TP
+.B $1
+event source (string):
+.I """radio"""
+or
+.I """gpio"""
+.TP
+.B $2
+button action (string):
+.I """pressed"""
+or
+.I """released"""
+.TP
+.B $3
+button label (user-defined string up to 15 chars)
+.TP
+.B $4
+seconds since last state change (number; may be 0 if less than 0.5s)
+.PP
+Remaining arguments carry source-specific data.
+.br
+For GPIO buttons ($1 == "gpio"):
+.TP
+.B $5
+GPIO pin number (BCM scheme)
+.TP
+.B $6
+raw pin value (0 or 1)
+.PP
+For remote (radio) buttons ($1 == "radio"):
+.TP
+.B $5
+64-bit raw hexadecimal code, with "0x" prefix, uppercase
+.TP
+.B $6
+source device type, 16-bit hexadecimal number with "0x" prefix, uppercase - see
+.I
+SUPPORTED RADIO DEVICES
+.TP
+.B $7
+valid bits (code length), decimal number, depends on source type
+.PP
+Example framework for bash script:
+.PP
+.RS
+BTN_TYPE=$1
+.br
+BTN_ACTION=$2
+.br
+BTN_LABEL=$3
+.br
+BTN_AGE=$4
+.br
+if [ "${BTN_TYPE}" == "gpio" ]; then
+.br
+  BTN_GPIO_PIN=$5
+.br
+  BTN_GPIO_VALUE=$6
+.br
+elif [ "${BTN_TYPE}" == "radio" ]; then
+.br
+  BTN_RADIO_CODE=$5
+.br
+  BTN_RADIO_DEVICE=$6
+.br
+  BTN_RADIO_BITS=$7
+.br
+else
+.br
+  # Shouldn't happen if executed by buttonhandler
+.br
+  exit 1
+.br
+fi
+.br
+logger "Event: ${BTN_TYPE} button ${BTN_LABEL} ${BTN_ACTION} after ${BTN_AGE} second(s)"
+.RE
+.SH SIGNALS
+SIGHUP signal instructs program to truncate and reopen its log file, which is
+useful during log rotation (for example by logrotate utility).
+.SH BUGS
+None so far.
+.SH SEE ALSO
+power433control(1), radio433client(1), radio433daemon(8), sensorproxy(8)
+.SH AUTHOR
+Michal 'Micu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
