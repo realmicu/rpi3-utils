@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
 
 	/* sending codes */
 	for(i = 0; i < ncode; i++) {
-		printf("Setting socket %s%s%s%s%s in group %d to %s.\n",
+		printf("Setting socket \"%s%s%s%s%s\" in group %d to %s.\n",
 		       codes[i].dev & POWER433_DEVICE_A ? "A" : "",
 		       codes[i].dev & POWER433_DEVICE_B ? "B" : "",
 		       codes[i].dev & POWER433_DEVICE_C ? "C" : "",
