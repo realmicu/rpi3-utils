@@ -1,0 +1,102 @@
+.TH radio433client "1" "March 2017" "raspik-utils" "Raspik Utilities by Micu"
+.SH NAME
+radio433client \- simple radio packet analyzer
+.SH SYNOPSIS
+.B radio433client
+[
+.B -w
+] [
+.B -P
+] [
+.B -T
+] [
+.B -R
+] [
+.B -r
+.I radioip
+] [
+.B -p
+.I radioport
+]
+.SH DESCRIPTION
+This program connects to
+.B radio433daemon
+server and dumps each received packet in more readable form. It displays device-specific data
+extracted from raw code, based on radio source type. Known sources are listed below.
+.PP
+Program works continuously. Press
+.I Ctrl-C
+to exit.
+.SH SUPPORTED RADIO SOURCES
+Program recognizes and decodes messages from following sources:
+.TP
+.I THM
+Wireless outdoor weather sensors
+.TP
+.I PWR
+Remote controls for power sockets
+.TP
+.I RMT
+General purpose radio remote controls (currently not yet supported)
+.SH OPTIONS
+.TP
+.B -w
+(optional) wait for
+.B radio433daemon
+server when starting
+.TP
+.B -P
+(optional) filter and show messages from remote controls for power sockets
+.TP
+.B -T
+(optional) filter and show messages from remote weather sensors
+.TP
+.B -R
+(optional) filter and show messages from general purpose remote controls (work in progress)
+.TP
+.BI "-r" " radioip"
+(optional) IPv4 address of
+.B radio433daemon
+server
+.TP
+.BI "-p" " radioport"
+(optional) TCP port of
+.B radio433daemon
+server
+.PP
+When no parameter is specified, client tries to connect to server 127.0.0.1 on port 5433
+and displays all received messages.
+.PP
+With filters enabled, source type label in output string
+is prefixed with asterisk '*' to give visual indication that only messages of certain type are
+displayed.
+.SH EXAMPLES
+Example 0 - 4 identical repeated codes sent by 'Hyundai WS Senzor 77TH' weather sensor
+on channel id 2 (no type filtering):
+.PP
+.RS
+.B 2017-06-26 19:13:55.087  THM len = 36 , code = 0x0A0D80971 , 2 , T: +2.7 C _ , H: 77 %
+.br
+.B 2017-06-26 19:13:55.210  THM len = 36 , code = 0x0A0D80971 , 2 , T: +2.7 C _ , H: 77 %
+.br
+.B 2017-06-26 19:13:55.332  THM len = 36 , code = 0x0A0D80971 , 2 , T: +2.7 C _ , H: 77 %
+.br
+.B 2017-06-26 19:13:55.454  THM len = 36 , code = 0x0A0D80971 , 2 , T: +2.7 C _ , H: 77 %
+.RE
+.PP
+Example 1 - codes sent by custom remote controller for power sockets (filtering is set
+to display only power socket signals):
+.PP
+.RS
+.B 2017-05-26 19:25:06.261  *PWR len = 24 , code = 0x415144 , 12 : BE : OFF
+.br
+.B 2017-05-26 19:25:06.346  *PWR len = 24 , code = 0x415144 , 12 : BE : OFF
+.br
+.B 2017-05-26 19:25:06.431  *PWR len = 24 , code = 0x415144 , 12 : BE : OFF
+.RE
+.SH BUGS
+None so far.
+.SH SEE ALSO
+power433control(1), radio433daemon(8), sensorproxy(8), buttonhandler(8)
+.SH AUTHOR
+Michal 'Micu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>

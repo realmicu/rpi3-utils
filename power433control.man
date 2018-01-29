@@ -1,4 +1,4 @@
-.TH power433control "8" "May 2017" "raspik-utils" "Raspik Utilities by Micu"
+.TH power433control "1" "May 2017" "raspik-utils" "Raspik Utilities by Micu"
 .SH NAME
 power433control \- program to control remote power sockets
 .SH SYNOPSIS
@@ -73,6 +73,11 @@ Example 1 - powering off 2 special sockets:
 .RE
 .SH BUGS
 None so far.
+.PP
+Please be aware that this utility access GPIO line directly with no reservation whatsoever
+so any write to the same GPIO pin at the same time causes conflict and distorts generated
+signal. Also, under heavy load, system may not be able to provide timing precise enough
+to produce correct transmission.
 .SH SEE ALSO
 radio433client(1), radio433daemon(8), sensorproxy(8), buttonhandler(8)
 .SH AUTHOR
