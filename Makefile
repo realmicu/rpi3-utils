@@ -3,14 +3,14 @@
 ##########
 
 CC = gcc
-CFLAGS = -I. -Wunused
+CFLAGS = -I. -Wunused -Wshadow
 PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	lcd_env_show_fs bmp180_test pigpiobtnpoll gpiosniffer gpiosniffer2 \
 	gpiosniffer3 gpiosniffint gpiosniffint3 rfkemotsniffer power433sniffer \
 	power433send power433ctrlite bh1750_test env_mon ssd1306_test \
 	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer \
 	radio433sniffer radio433daemon radio433client sensorproxy \
-	net_env_mon power433control buttonhandler
+	net_env_mon power433control buttonhandler radiodump
 
 BUILDSTAMP = $(shell echo `date '+%Y%m%d-git@'``git log --oneline -1 | cut -d' ' -f1`)
 
@@ -201,6 +201,9 @@ radio433client:	radio433client.c radio433_dev.o
 
 power433control:	power433control.c radio433_lib.o radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
+
+radiodump:	radiodump.c
+	$(CC) -o $@ $< $(CFLAGS) $(RADIO433_EXTRA_LIBS) -DHAS_CPUFREQ -lcpufreq -DBUILDSTAMP=\"$(BUILDSTAMP)\"
 
 ##################################
 # Networked environment monitors #
