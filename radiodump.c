@@ -46,7 +46,7 @@ char progname[PATH_MAX + 1];
 int brkflag, isrshut;
 static volatile int bufsize;
 static volatile int bri, bwi;	/* read and write buffer idx */
-static volatile int tsync, tnoise;
+static volatile int tsyncmin, tsyncmax, tnoise;
 static volatile unsigned long numpkts, numttotal, numtnoise, numtmiss;
 static struct timeval tvprev;
 static unsigned long *tbuf;	/* timing ring buffer */
@@ -60,14 +60,14 @@ static sem_t semisrdown;	/* unblocked if ISR is shut down and ready for exit */
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s -g gpio [-C] [-o outfile] [-b buffersize] [-s synctime] [-e noisetime] [-t timelimit] [-c packets]\n\n", progname);
+	printf("Usage:\n\t%s -g gpio [-C] [-o outfile] [-b buffersize] [-s syncmin[,syncmax]] [-e noisetime] [-t timelimit] [-c packets]\n\n", progname);
 	puts("Where:");
 	puts("\t-g gpio       - GPIO pin with external RF receiver data (mandatory)");
 	puts("\t-C            - generate CSV-friendly output (optional, format \"time,0,1,duration\")");
 	puts("\t-o outfile    - output file name (optional)");
 	printf("\t-b buffersize - size of signal processing buffer (in entries, optional, default is %d)\n",
 	       RING_BUFFER_ENTRIES);
-	puts("\t-s synctime   - wait for low signal that marks packet start (in microseconds, optional, default is none)");
+	puts("\t-s min[,max]  - wait for low signal that marks packet start (in microseconds, optional, default is none)");
 	puts("\t-e noisetime  - treat signal as noise and ignore (in microseconds, optional, default is record all)");
 	puts("\t-t timelimit  - capture duration (in seconds, optional, default is indefinite)");
 	puts("\t-c packets    - number of packets to capture (optional, default is indefinite, valid only with -s)\n");
@@ -154,7 +154,8 @@ static void handleGpioInt(void)
 	gettimeofday(&t, NULL);
 	tsdiff = TUSDIFF(t.tv_sec, t.tv_usec, tvprev.tv_sec, tvprev.tv_usec);
 
-	if (tsync && !numpkts && tsdiff < tsync)
+	if (!numpkts && ((tsyncmin && tsdiff < tsyncmin) ||
+	    (tsyncmax && tsdiff > tsyncmax)))
 		/* waiting for sync that begins first packet */
 		return;
 
@@ -166,7 +167,7 @@ static void handleGpioInt(void)
 	}
 
 	/* packet sync timing found */
-	if (tsync && tsdiff >= tsync)
+	if (tsyncmin && tsdiff >= tsyncmin && (!tsyncmax || tsdiff <= tsyncmax))
 		numpkts++;
 
 	if ((bwi - bri + bufsize) % bufsize == 1) {
@@ -213,7 +214,8 @@ int main(int argc, char *argv[])
 	gpio = -1;
 	memset(outfile, 0, PATH_MAX + 1);
 	bufsize = RING_BUFFER_ENTRIES;
-	tsync = 0;
+	tsyncmin = 0;
+	tsyncmax = 0;
 	tnoise = 0;
 	timlim = 0;
 	pktlim = 0;
@@ -226,7 +228,7 @@ int main(int argc, char *argv[])
 		else if (opt == 'b')
 			sscanf(optarg, "%d", &bufsize);
 		else if (opt == 's')
-			sscanf(optarg, "%d", &tsync);
+			sscanf(optarg, "%d,%d", &tsyncmin, &tsyncmax);
 		else if (opt == 'e')
 			sscanf(optarg, "%d", &tnoise);
 		else if (opt == 't')
@@ -252,19 +254,23 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	if (!tsync && pktlim) {
+	if (!tsyncmin && pktlim) {
 		dprintf(STDERR_FILENO, "Error: cannot detect packets when no sync time is specified (-c requires -s).\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (tnoise && tsync && tnoise >= tsync) {
+	if (tnoise && tsyncmin && tnoise >= tsyncmin) {
 		dprintf(STDERR_FILENO, "Error: noise time >= sync time.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (tsync && timlim) {
-		dprintf(STDERR_FILENO, "Warning: program will not time out until at least one sync pulse is received (both -s and -t are specified).\n");
+	if (tsyncmax && tsyncmin >= tsyncmax) {
+		dprintf(STDERR_FILENO, "Error: sync time min >= sync time max.\n");
+		exit(EXIT_FAILURE);
 	}
+
+	if (tsyncmin && timlim)
+		dprintf(STDERR_FILENO, "Warning: program will not time out until at least one sync pulse is received (both -s and -t are specified).\n");
 
 #ifdef HAS_CPUFREQ
 	/* warn user if system frequency is dynamic */
@@ -341,7 +347,8 @@ int main(int argc, char *argv[])
 	dprintf(ofd, "# Timing buffer size: %d entries\n", bufsize);
 	dprintf(ofd, "# Packet limit: %d %s\n", pktlim, pktlim ? "" : "(unlimited)");
 	dprintf(ofd, "# Capture duration: %d %s\n", timlim, timlim ? "second(s)" : "(unlimited)");
-	dprintf(ofd, "# Packet sync time: %d %s\n", tsync, tsync ? "microsecond(s)" : "(not set)");
+	dprintf(ofd, "# Packet sync time min: %d %s\n", tsyncmin, tsyncmin ? "microsecond(s)" : "(not set)");
+	dprintf(ofd, "# Packet sync time max: %d %s\n", tsyncmax, tsyncmax ? "microsecond(s)" : "(not set)");
 	dprintf(ofd, "# Noise max time: %d %s\n", tnoise, tnoise ? "microsecond(s)" : "(not set)");
 	dprintf(ofd, "# START\n");
 
