@@ -155,9 +155,12 @@ static void handleGpioInt(void)
 	tsdiff = TUSDIFF(t.tv_sec, t.tv_usec, tvprev.tv_sec, tvprev.tv_usec);
 
 	if (!numpkts && ((tsyncmin && tsdiff < tsyncmin) ||
-	    (tsyncmax && tsdiff > tsyncmax)))
+	    (tsyncmax && tsdiff > tsyncmax))) {
 		/* waiting for sync that begins first packet */
+		tvprev.tv_sec = t.tv_sec;
+		tvprev.tv_usec = t.tv_usec;
 		return;
+	}
 
 	if (tsdiff <= tnoise) {
 		/* tnoise may be 0 but it works anyway */
