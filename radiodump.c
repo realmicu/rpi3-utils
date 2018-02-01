@@ -385,9 +385,9 @@ int main(int argc, char *argv[])
 	dprintf(ofd, "\n# END\n");
 	dprintf(ofd, "# Total pulses received: %lu\n", numttotal);
 	dprintf(ofd, "# Pulses missed (buffer full): %lu (%.2lf %%)\n",
-		numtmiss, (double)numtmiss/numttotal);
+		numtmiss, 100.0 * numtmiss / numttotal);
 	dprintf(ofd, "# Noise pulses: %lu (%.2lf %%)\n",
-		numtnoise, (double)numtnoise / (numttotal + numtnoise));
+		numtnoise, 100.0 * numtnoise / (numttotal + numtnoise));
 	dprintf(ofd, "# Packets (sync pulses): %lu\n", numpkts);
 	dprintf(ofd, "# Capture duration: %lu second(s)\n", td / 1000000UL);
 
