@@ -31,9 +31,9 @@ extern int optind, opterr, optopt;
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"radiodump v0.6"
+#define BANNER			"radiodump v0.7"
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
-#define RING_BUFFER_ENTRIES	256
+#define RING_BUFFER_ENTRIES	1024
 #define FILE_UMASK		(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 #define SYSFS_GPIO_UNEXPORT	"/sys/class/gpio/unexport"
 #define TUSDIFF(sec_e, usec_e, sec_s, usec_s)	(((sec_e) - (sec_s)) * 1000000UL + (usec_e) - (usec_s))
@@ -297,7 +297,7 @@ int main(int argc, char *argv[])
 	/* open output file if specified */
 	if (outfile[0]) {
 		ofd = open(outfile, O_CREAT | O_TRUNC | \
-			   O_APPEND | O_SYNC | O_WRONLY, FILE_UMASK);
+			   O_APPEND | O_WRONLY, FILE_UMASK);
 		if (ofd == -1) {
 			dprintf(STDERR_FILENO,
 				"Error: unable to open output file '%s': %s\n",
