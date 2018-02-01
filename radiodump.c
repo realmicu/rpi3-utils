@@ -31,10 +31,11 @@ extern int optind, opterr, optopt;
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"radiodump v0.5"
+#define BANNER			"radiodump v0.6"
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
 #define RING_BUFFER_ENTRIES	256
 #define FILE_UMASK		(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+#define SYSFS_GPIO_UNEXPORT	"/sys/class/gpio/unexport"
 #define TUSDIFF(sec_e, usec_e, sec_s, usec_s)	(((sec_e) - (sec_s)) * 1000000UL + (usec_e) - (usec_s))
 
 /* ********************** */
@@ -101,6 +102,22 @@ int checkCpuFreq(void)
 	return s;
 }
 #endif
+
+/* unexport GPIO: remove GPIO exported in /sys when ISR is used */
+int unexportSysfsGPIO(int gpio)
+{
+	int sysfd, ws;
+	char gtxt[6];
+
+	sysfd = open(SYSFS_GPIO_UNEXPORT, O_WRONLY);
+	if (sysfd == -1)
+		return -1;
+	memset(gtxt, 0, sizeof(gtxt));
+	snprintf(gtxt, sizeof(gtxt), "%d", gpio);
+	ws = write(sysfd, gtxt, strlen(gtxt));
+	close(sysfd);
+	return ws < 0 ? -1 : 0;
+}
 
 /* ************ */
 /* *  Signal  * */
@@ -368,5 +385,6 @@ int main(int argc, char *argv[])
 	free(tbuf);
 	if (ofd != STDOUT_FILENO)
 		close(ofd);
+	unexportSysfsGPIO(gpio);
 	return 0;
 }
