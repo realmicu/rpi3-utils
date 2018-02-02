@@ -379,14 +379,24 @@ int main(int argc, char *argv[])
 		tbval = tbuf[bri];
 		bri = (bri + 1) % bufsize;
 		if (csvflag) {
-			dprintf(ofd, "%lu,%d,%d,%lu\n",
+			dprintf(ofd, "%lu,%d,%d,%lu",
 				csvtime, csvbit, 1 - csvbit, tbval);
 			csvbit = 1 - csvbit;
 			csvtime += tbval;
+			if (tsyncmin && tbval >= tsyncmin &&
+			    (!tsyncmax || tbval <= tsyncmax))
+				dprintf(ofd, ",SYNC\n");
+			else
+				dprintf(ofd, "\n");
 		} else {
 			if (numflag)
 				dprintf(ofd, "%-10lu\t", cnt++);
-			dprintf(ofd, "%lu\n", tbval);
+			dprintf(ofd, "%lu", tbval);
+			if (tsyncmin && tbval >= tsyncmin &&
+			    (!tsyncmax || tbval <= tsyncmax))
+				dprintf(ofd, "\tSYNC\n");
+			else
+				dprintf(ofd, "\n");
 		}
 	}
 
