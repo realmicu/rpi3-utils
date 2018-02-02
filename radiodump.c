@@ -60,10 +60,11 @@ static sem_t semisrdown;	/* unblocked if ISR is shut down and ready for exit */
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s -g gpio [-C] [-o outfile] [-b buffersize] [-s syncmin[,syncmax]] [-e noisetime] [-t timelimit] [-c packets]\n\n", progname);
+	printf("Usage:\n\t%s -g gpio [-C|-N] [-o outfile] [-b buffersize] [-s syncmin[,syncmax]] [-e noisetime] [-t timelimit] [-c packets]\n\n", progname);
 	puts("Where:");
 	puts("\t-g gpio       - GPIO pin with external RF receiver data (mandatory)");
 	puts("\t-C            - generate CSV-friendly output (optional, format \"time,0,1,duration\")");
+	puts("\t-N            - show pulse counter (optional)");
 	puts("\t-o outfile    - output file name (optional)");
 	printf("\t-b buffersize - size of signal processing buffer (in entries, optional, default is %d)\n",
 	       RING_BUFFER_ENTRIES);
@@ -201,8 +202,8 @@ int main(int argc, char *argv[])
 	int ofd, gpio, timlim, pktlim;
 	char outfile[PATH_MAX + 1];
 	unsigned long blen, tlus, td, tbval;
-	int csvflag, csvbit;
-	unsigned long csvtime;
+	int csvflag, csvbit, numflag;
+	unsigned long csvtime, cnt;
 
 	/* get process name */
 	strncpy(progname, basename(argv[0]), PATH_MAX);
@@ -223,7 +224,8 @@ int main(int argc, char *argv[])
 	timlim = 0;
 	pktlim = 0;
 	csvflag = 0;
-	while((opt = getopt(argc, argv, "g:o:b:s:e:t:c:C")) != -1) {
+	numflag = 0;
+	while((opt = getopt(argc, argv, "g:o:b:s:e:t:c:CN")) != -1) {
 		if (opt == 'g')
 			sscanf(optarg, "%d", &gpio);
 		else if (opt == 'o')
@@ -240,6 +242,8 @@ int main(int argc, char *argv[])
 			sscanf(optarg, "%d", &pktlim);
 		else if (opt == 'C')
 			csvflag = 1;
+		else if (opt == 'N')
+			numflag = 1;
 		else if (opt == '?' || opt == 'h') {
 			help();
 			exit(EXIT_FAILURE);
@@ -270,6 +274,11 @@ int main(int argc, char *argv[])
 	if (tsyncmax && tsyncmin >= tsyncmax) {
 		dprintf(STDERR_FILENO, "Error: sync time min >= sync time max.\n");
 		exit(EXIT_FAILURE);
+	}
+
+	if (csvflag && numflag) {
+		dprintf(STDERR_FILENO, "Warning: numbering disabled in CSV mode (-C overrides -N).\n");
+		numflag = 0;
 	}
 
 	if (tsyncmin && timlim)
@@ -321,6 +330,7 @@ int main(int argc, char *argv[])
 	bwi = 0;
 	csvbit = 0;
 	csvtime = 0;
+	cnt = 0;
 	sem_init(&semtrdy, 0, 0);
 	sem_init(&semisrdown, 0, 0);
 	gettimeofday(&tstart, NULL);
@@ -373,9 +383,11 @@ int main(int argc, char *argv[])
 				csvtime, csvbit, 1 - csvbit, tbval);
 			csvbit = 1 - csvbit;
 			csvtime += tbval;
-		}
-		else
+		} else {
+			if (numflag)
+				dprintf(ofd, "%-10lu\t", cnt++);
 			dprintf(ofd, "%lu\n", tbval);
+		}
 	}
 
 	/* wait for ISR to shut down */
