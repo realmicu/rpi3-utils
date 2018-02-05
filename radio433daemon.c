@@ -72,6 +72,7 @@ extern int optind, opterr, optopt;
 #define LOG_NOTICE		"notice"
 #define LOG_WARN		"warn"
 #define LOG_ERROR		"error"
+#define SYSFS_GPIO_UNEXPORT	"/sys/class/gpio/unexport"
 
 /* ********************** */
 /* *  Global variables  * */
@@ -80,7 +81,7 @@ extern int optind, opterr, optopt;
 volatile int debugflag, clntrun;
 sem_t blinksem;		/* signal LED that it should blink */
 pthread_t blinkthread;
-int ledgpio, ledact;
+int gpio, ledgpio, ledact;
 sem_t clientsem;	/* to synchronize access to client fd array */
 pthread_t clntaddthread;
 int srvsock;		/* server socket */
@@ -234,12 +235,39 @@ void *blinkerLEDThread(void *arg)
 	}
 }
 
+/* unexport GPIO: remove GPIO exported in /sys when ISR is used */
+int unexportSysfsGPIO(int oipg)
+{
+	int sysfd, ws;
+	char gtxt[6];
+
+	if (setegid(0))
+		return -1;
+	if (seteuid(0))
+		return -1;
+
+	sysfd = open(SYSFS_GPIO_UNEXPORT, O_WRONLY);
+	if (sysfd == -1)
+		return -1;
+
+	memset(gtxt, 0, sizeof(gtxt));
+	snprintf(gtxt, sizeof(gtxt), "%d", oipg);
+	ws = write(sysfd, gtxt, strlen(gtxt));
+	close(sysfd);
+
+	/* no need to restore UID/GID as process is about to end */
+	return ws < 0 ? -1 : 0;
+}
+
 /* Process shutdown */
 void endProcess(int status)
 {
 	int i;
 
 	unlink(pidfname);
+
+	/* unexport gpios */
+	unexportSysfsGPIO(gpio);
 
 	/* terminate threads regardless of semaphores */
 	if (clntrun) {
@@ -405,7 +433,7 @@ int main(int argc, char *argv[])
 {
 	struct timeval ts;
 	unsigned long long code;
-	int gpio, type, bits, opt;
+	int type, bits, opt;
 	uid_t uid;
 	gid_t gid;
 	int srvport;
