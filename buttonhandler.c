@@ -71,7 +71,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"ButtonHandler v0.92"
+#define BANNER			"ButtonHandler v0.94"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -104,6 +104,7 @@
 #define EVQ_TYPE_RADIO		2
 #define EVQ_ACTION_PRESSED	0
 #define EVQ_ACTION_RELEASED	1
+#define SYSFS_GPIO_UNEXPORT	"/sys/class/gpio/unexport"
 
 #define TSDIFF(s0, m0, s1, m1)	(((s0) - (s1)) * 1000 + (m0) - (m1))
 #define TSDIFFRS(s0, m0, s1, m1) ((s0) - (s1) + ((m0) - (m1) + 500) / 1000)
@@ -469,11 +470,43 @@ int daemonize(void)
 	return 0;
 }
 
+/* unexport GPIOs: remove GPIOs exported in /sys when ISR is used */
+void unexportSysfsGPIOs(void)
+{
+	int i, sysfd;
+	char gtxt[6];
+
+	if (setegid(0))
+		return;
+	if (seteuid(0))
+		return;
+
+	sysfd = open(SYSFS_GPIO_UNEXPORT, O_WRONLY);
+	if (sysfd == -1)
+		return;
+
+	for (i = 0; i < GPIO_PINS; i++)
+		if (gpiodesc[i].status && gpiodesc[i].isrfunc != NULL) {
+			memset(gtxt, 0, sizeof(gtxt));
+			snprintf(gtxt, sizeof(gtxt), "%d", i);
+			write(sysfd, gtxt, strlen(gtxt));
+		}
+
+	close(sysfd);
+
+	/* no need to restore UID/GID as process is about to end */
+	return;
+}
+
 /* Process shutdown */
 void endProcess(int status)
 {
 	/* remove pid file */
 	unlink(pidfname);
+
+	/* unexport gpios */
+	if (gpiodlen)
+		unexportSysfsGPIOs();
 
 	/* stop networking thread (if any) and close socket */
 	if (netclrun)
