@@ -107,7 +107,7 @@ GPIO pin (in BCM order) with external RF receiver data output connected
 .TP
 .BI "-u" " username"
 (optional) name of the user to switch to after initialization,
-instructs program to drop super-user privileges permanently
+instructs program to drop super-user effective privileges
 .TP
 .B "-d"
 (optional) debug mode, stay foreground and print activity on stdout

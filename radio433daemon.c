@@ -168,9 +168,9 @@ int dropRootPriv(const char *username, uid_t *uid, gid_t *gid)
 	if (setgroups(ngrp, grps))
 		return -1;
 	/* start with GID then UID */
-	if (setresgid(pw.pw_gid, pw.pw_gid, pw.pw_gid))
+	if (setegid(pw.pw_gid))
 		return -1;
-	if (setresuid(pw.pw_uid, pw.pw_uid, pw.pw_uid))
+	if (seteuid(pw.pw_uid))
 		return -1;
 	*uid = pw.pw_uid;
 	*gid = pw.pw_gid;
