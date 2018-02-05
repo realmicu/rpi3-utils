@@ -31,7 +31,7 @@ extern int optind, opterr, optopt;
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"radiodump v0.7"
+#define BANNER			"radiodump v0.8"
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
 #define RING_BUFFER_ENTRIES	1024
 #define FILE_UMASK		(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
@@ -60,7 +60,7 @@ static sem_t semisrdown;	/* unblocked if ISR is shut down and ready for exit */
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s -g gpio [-C|-N] [-o outfile] [-b buffersize] [-s syncmin[,syncmax]] [-e noisetime] [-t timelimit] [-c packets]\n\n", progname);
+	printf("Usage:\n\t%s -g gpio [-C|-N|-V] [-o outfile] [-b buffersize] [-s syncmin[,syncmax]] [-e noisetime] [-t timelimit] [-c packets]\n\n", progname);
 	puts("Where:");
 	puts("\t-g gpio       - GPIO pin with external RF receiver data (mandatory)");
 	puts("\t-C            - generate CSV-friendly output (optional, format \"time,0,1,duration\")");
@@ -71,7 +71,18 @@ void help(void)
 	puts("\t-s min[,max]  - wait for low signal that marks packet start (in microseconds, optional, default is none)");
 	puts("\t-e noisetime  - treat signal as noise and ignore (in microseconds, optional, default is record all)");
 	puts("\t-t timelimit  - capture duration (in seconds, optional, default is indefinite)");
-	puts("\t-c packets    - number of packets to capture (optional, default is indefinite, valid only with -s)\n");
+	puts("\t-c packets    - number of packets to capture (optional, default is indefinite, valid only with -s)");
+	puts("\t-V            - show version and exit\n");
+}
+
+/* show version */
+void verShow(void)
+{
+#ifdef BUILDSTAMP
+	printf("%s build %s\n", BANNER, BUILDSTAMP);
+#else
+	printf("%s\n", BANNER);
+#endif
 }
 
 /* change sheduling priority */
@@ -225,7 +236,7 @@ int main(int argc, char *argv[])
 	pktlim = 0;
 	csvflag = 0;
 	numflag = 0;
-	while((opt = getopt(argc, argv, "g:o:b:s:e:t:c:CN")) != -1) {
+	while((opt = getopt(argc, argv, "g:o:b:s:e:t:c:CNV")) != -1) {
 		if (opt == 'g')
 			sscanf(optarg, "%d", &gpio);
 		else if (opt == 'o')
@@ -244,6 +255,10 @@ int main(int argc, char *argv[])
 			csvflag = 1;
 		else if (opt == 'N')
 			numflag = 1;
+		else if (opt == 'V') {
+			verShow();
+			exit(EXIT_SUCCESS);
+		}
 		else if (opt == '?' || opt == 'h') {
 			help();
 			exit(EXIT_FAILURE);
