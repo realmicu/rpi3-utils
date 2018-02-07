@@ -1,0 +1,93 @@
+.TH radiodump "1" "January 2018" "raspik-utils" "Raspik Utilities by Micu"
+.SH NAME
+radiodump - radio signal sniffer
+.SH SYNOPSIS
+.BI "radiodump \-g " gpio
+[
+.BR \-C " | " \-N " ] ["
+.BI "\-o " outfile
+] [
+.BI "\-b " buffersize
+] [
+.BI "\-s " syncmin,[syncmax]
+] [
+.BI "\-e " noisetime
+] [
+.BI "\-t " timelimit
+] [
+.BI "\-c " packets
+]
+.PP
+.B radiodump \-V
+.SH DESCRIPTION
+This program captures radio transmissions from receiver connected to GPIO pin and displays them
+as interleaved timings (duration) of high and low signals. Due to capture method limitations,
+utility is unable to reliably determine GPIO level (0 or 1) at the time of change, therefore
+only raw timings (in microseconds) are shown. It is up to user to determine if given timing
+refers to high or low signal. Most hardware uses long period of low transmission as sync
+(preamble) so it may serve as a hint.
+.PP
+Data is stored in circular buffer and written to standard output (or file if \fB\-o\fR flag
+is used). By default this buffer can hold up to 1024 consecutive signals (entries), but
+its capacity can be changed via \fB\-b\fR option. If output is very slow compared to radio
+activity, buffer will eventually fill up and no more data will be captured until there is
+free space again.
+.PP
+As simple and cheap OOK/ASK receivers tend to pick up a lot of background noise, especially
+when no transmission is received, expect a lot of data to be displayed at all times, regardless
+of transmitter activity. To help tackle this situation, program can ignore short signals (simple
+noise filter with \fB\-e\fR flag) and mark long intervals (in duration range specified via \fB-s\fR)
+as potential sync preambles.
+.PP
+To make signal analysis easier with chart drawing programs (such as \fILibreOffice Calc\fR), special
+CSV mode is available (\fB\-C\fR). In this mode program produces CSV output that can be easily
+imported into spreadsheet and processed. There are two columns with alternating 0s and 1s, one of
+them can be chosen as source of high/low Y-values. First column is timestamp for X axis.
+.SH OPTIONS
+.TP
+.BI "\-g" " gpio"
+GPIO pin number (BCM scheme) with external RF transmitter connected
+.TP
+.B \-C
+(optional) generate CSV-friendly output (in format "time,0,1,duration")
+.TP
+.B \-N
+(optional) show pulse counter (only in standard display mode)
+.TP
+.BI "\-o " outfile
+(optional) output file name
+.TP
+.BI "\-b " buffersize
+(optional) number of entres in signal processing buffer (default is 1024)
+.TP
+.BI "\-s " "syncmin[,syncmax]"
+(optional) sync preamble minimum (and optional maximum) length in microseconds; program waits
+for first such signal when recording and then marks all of them with "SYNC" string
+.TP
+.BI "\-e " noisetime
+(optional) maximum length of signal (in microseconds) that will be considered noise and dropped
+.TP
+.BI "\-t " timelimit
+(optional) capture duration in seconds; program stops when any signal is recorded after this time
+.TP
+.BI "\-c " packets
+(optional) number of sync preambles to capture before exit; program stops immediately after
+specified number of such signals is recorded (valid only with \fB\-s\fR option)
+.TP
+.B -V
+print version and exit
+.TP
+.I Note:
+please be aware that using both \fB\-t\fR and \fB\-s\fR options may cause program to wait
+indefinitely (exceeding time limit) for first sync preamble signal.
+.SH BUGS
+None so far.
+.PP
+Please be aware that this utility access GPIO line directly with no reservation whatsoever.
+Also, under heavy load, system may not be able to provide accurate timing and produce reliable
+data. Recording to slow media in noisy environment may cause buffer overflows regardless
+of buffer size, although larger memory allows to contain high traffic for a longer time.
+.SH SEE ALSO
+.BR power433control "(1), " radio433client "(1), " radio433daemon "(8), " sensorproxy "(8), " buttonhandler "(8) "
+.SH AUTHOR
+Michal "Micu" Cieslakiewicz <michal.cieslakiewicz@wp.pl>
