@@ -1,19 +1,14 @@
 .TH power433control "1" "May 2017" "raspik-utils" "Raspik Utilities by Micu"
 .SH NAME
-power433control \- program to control remote power sockets
+power433control - program to control remote power sockets
 .SH SYNOPSIS
 .B power433control
 [
-.B -g
-.I gpio
+.BI "\-g " gpio
 ] [
-.B -c
-.I count
+.BI "\-c " count
 ]
-.B oper0
-[
-.B oper1
-] ...
+.BR oper0 " [ " oper1 " ] ..."
 .SH DESCRIPTION
 This utility sends radio codes that control remote power sockets (wide range of devices including
 Kemot URZ1226 and compatible). Codes (in OOK encoding) are sent directly to radio transmitter
@@ -27,16 +22,15 @@ to on/off buttons on remote controller (each such unit controls 4 or 5 sockets).
 vendor remote controller limitations decrease usable power sockets from 1024 (2^10) to 160 (2^5 * 5)
 even though any 10-bit DIP switch combination is accepted by power socket circuit.
 .PP
-.I power433control
-overcomes this limitation by allowing to send any 10-bit on/off code to power socket, so
-all 1024 combinations (most of them out of control with vendor remote) are supported and
-available.
+\fBpower433control\fR overcomes this limitation by allowing to send any 10-bit on/off code to
+a power socket, so all 1024 combinations (most of them out of control with vendor remote) are
+supported and available.
 .SH OPTIONS
 .TP
-.BI "-g" " gpio"
+.BI "\-g" " gpio"
 (optional) GPIO pin number (BCM scheme) with external RF transmitter connected (default is 20)
 .TP
-.BI "-c" " count"
+.BI "\-c" " count"
 (optional) number of packets sent for one code transmission (default 12, recommended minimum is 4)
 .TP
 .B oper
@@ -55,10 +49,7 @@ any combination of letters A-E that select last 5 bits of socket h/w address (A 
 C - 2, D - 1 and E - 0); letter present means 1 and letter omitted is 0
 .TP
 .I on_or_off
-action
-.I on
-or
-.I off
+action \fIon\fR or \fIoff\fR
 .SH EXAMPLES
 Example 0 - enabling socket A in set 11, the same as pressing A-ON button on remote control:
 .PP
@@ -79,6 +70,6 @@ so any write to the same GPIO pin at the same time causes conflict and distorts 
 signal. Also, under heavy load, system may not be able to provide timing precise enough
 to produce correct transmission.
 .SH SEE ALSO
-radio433client(1), radio433daemon(8), sensorproxy(8), buttonhandler(8)
+.BR radiodump "(1), " radio433client "(1), " radio433daemon "(8), " sensorproxy "(8), " buttonhandler "(8) "
 .SH AUTHOR
-Michal 'Micu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
+Michal "Micu" Cieslakiewicz <michal.cieslakiewicz@wp.pl>

@@ -1,29 +1,23 @@
 .TH radio433daemon "8" "March 2017" "raspik-utils" "Raspik Utilities by Micu"
 .SH NAME
-radio433daemon \- radio code receiver and server
+radio433daemon - radio code receiver and server
 .SH SYNOPSIS
-.B radio433daemon -g
-.I gpio
+.B radio433daemon
+.BI "\-g " gpio
 [
-.B -u
-.I username
+.BI "\-u " username
 ] [
-.B -d
+.B \-d
 |
-.B -l
-.I logfile
+.BI "\-l " logfile
 ] [
-.B -P
-.I pidfile
+.BI "\-P " pidfile
 ] [
-.B -L
-.I led
+.BI "\-L " led
 ] [
-.B -h
-.I ipaddr
+.BI "\-h " ipaddr
 ] [
-.B -p
-.I tcpport
+.BI "\-p " tcpport
 ]
 .SH DESCRIPTION
 This program watches GPIO line connected to radio receiver (for example
@@ -31,23 +25,19 @@ popular and cheap 433.92 MHz boards for Arduino / Raspberry Pi) and searches
 radio traffic for known OOK (On-Off-Keying) modulated signals.
 From network side it accepts TCP connections from clients and updates them
 with decoded signals as soon as they arrive.
-.B radio433daemon
-is intented to serve as a proxy between radio receiver and programs,
-allowing many of them to have simultaneous read-only access to
+\fBradio433daemon\fR is intented to serve as a proxy between radio receiver
+and programs, allowing many of them to have simultaneous read-only access to
 receiving medium.
 .PP
-Each client connected to
-.B radio433daemon
-server receives text message with decoded signal. Server does not
-disconnect any of the clients. Channel is open and client gets messages
-until it closes communication socket.
+Each client connected to \fBradio433daemon\fR server receives text message
+with decoded signal. Server does not disconnect any of the clients. Channel
+is open and client gets messages until it closes communication socket.
 .PP
 Received signal is classified and decoded. No checksums are verified and
 recurring transmissions are not cumulated - it is up to client to perform
 validation, further analysis and consolidation of received messages.
-One such example is
-.B radio433client
-utility that recognizes and displays messages for some known remote devices.
+One such example is \fBradio433client\fR utility that recognizes and displays
+messages for some known remote devices.
 .SH MESSAGE FORMAT
 For each received and decoded transmission, server sends following text message
 to all connected clients:
@@ -71,18 +61,15 @@ expected interval between retransmissions in milliseconds or 0 if unknown or
 not applicable (for example remote button) (based on message type)
 .TP
 .B type
-device type that sends signal, see
-.I Supported Radio Sources
-below (16-bit hex number prefixed with 0x)
+device type that sends signal, see \fISupported Radio Sources\fR below (16-bit
+hex number prefixed with "0x")
 .TP
 .B bits
 valid bits in code
 .TP
 .B code
-64-bit code in hex format (starts with 0x, payload may be smaller so always
-verify
-.I bits
-field)
+64-bit code in hex format (starts with "0x", payload may be smaller so always
+verify \fIbits\fR field)
 .TP
 .B <ZZ>
 end of message
@@ -102,39 +89,36 @@ It is up to client program to further classify such transmission based on data
 provided in decoded message (code checksum and masking etc).
 .SH OPTIONS
 .TP
-.BI "-g" " gpio"
+.BI "\-g" " gpio"
 GPIO pin (in BCM order) with external RF receiver data output connected
 .TP
-.BI "-u" " username"
+.BI "\-u" " username"
 (optional) name of the user to switch to after initialization,
 instructs program to drop super-user effective privileges
 .TP
-.B "-d"
+.B "\-d"
 (optional) debug mode, stay foreground and print activity on stdout
 .TP
-.BI "-l" " logfile"
+.BI "\-l" " logfile"
 (optional) path to log file (default is none - nothing is logged)
 .TP
-.BI "-P" " pidfile"
+.BI "\-P" " pidfile"
 (optional) path to PID file (default is /var/run/radio433daemon.pid)
 .TP
-.BI "-L" " led"
+.BI "\-L" " led"
 (optional) enable LED that signals packet receiving, use 2 colon-separated values
 .I gpio:act
-notation where
-.I gpio
-is BCM GPIO pin with LED attached and
-.I act
-is 0 for active low or 1 for active high setup
+notation where \fIgpio\fR is BCM GPIO pin with LED attached and \fIact\fR is 0
+for active low or 1 for active high setup
 .TP
-.BI "-h" " ipaddr"
+.BI "\-h" " ipaddr"
 (optional) IPv4 address to listen on (default is any, 0.0.0.0)
 .TP
-.BI "-p" " tcpport"
+.BI "\-p" " tcpport"
 (optional) TCP port to listen on (default is 5433)
 .SH SIGNALS
 Sending SIGHUP signal instructs program to truncate and reopen its log file, which is
-useful during log rotation (for example by logrotate utility).
+useful during log rotation (for example by \fBlogrotate\fR utility).
 .SH BUGS
 None so far.
 .PP
@@ -144,15 +128,11 @@ measured with microseconds accuracy. It may seem inappropriate to implement OOK 
 decoding in software on a multitasking system, but in practice it works quite well and
 benefits from multi-threaded architecture to simultaneously record and classify signals
 with different bit encoding schemas. However it is strongly recommended to run operating
-system with stable clock frequency: fixed-clock CPU governors like
-.B powersave
-or
-.B performance
-yield far more better signal recognition than
-.B ondemand
+system with stable clock frequency: fixed-clock CPU governors like \fBpowersave\fR or
+\fBperformance\fR yield far more better signal recognition than \fBondemand\fR
 one does. Also, systems under high load may suffer worse signal processing due to more
 stress imposed on CPUs.
 .SH SEE ALSO
-power433control(1), radio433client(1), buttonhandler(8), sensorproxy(8)
+.BR power433control "(1), " radio433client "(1), " radiodump "(1), " sensorproxy "(8), " buttonhandler "(8) "
 .SH AUTHOR
-Michal 'Micu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
+Michal "Micu" Cieslakiewicz <michal.cieslakiewicz@wp.pl>

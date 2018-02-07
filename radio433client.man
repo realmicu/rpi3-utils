@@ -1,32 +1,27 @@
 .TH radio433client "1" "March 2017" "raspik-utils" "Raspik Utilities by Micu"
 .SH NAME
-radio433client \- simple radio packet analyzer
+radio433client - simple radio packet analyzer
 .SH SYNOPSIS
 .B radio433client
 [
-.B -w
+.B \-w
 ] [
-.B -P
+.B \-P
 ] [
-.B -T
+.B \-T
 ] [
-.B -R
+.B \-R
 ] [
-.B -r
-.I radioip
+.BI "\-r " radioip
 ] [
-.B -p
-.I radioport
+.BI "\-p " radioport
 ]
 .SH DESCRIPTION
-This program connects to
-.B radio433daemon
-server and dumps each received packet in more readable form. It displays device-specific data
-extracted from raw code, based on radio source type. Known sources are listed below.
+This program connects to \fBradio433daemon\fR server and dumps each received packet
+in more readable form. It displays device-specific data extracted from raw code,
+based on radio source type. Known sources are listed below.
 .PP
-Program works continuously. Press
-.I Ctrl-C
-to exit.
+Program works continuously. Press \fICtrl\-C\fR to exit.
 .SH SUPPORTED RADIO SOURCES
 Program recognizes and decodes messages from following sources:
 .TP
@@ -40,29 +35,23 @@ Remote controls for power sockets
 General purpose radio remote controls (currently not yet supported)
 .SH OPTIONS
 .TP
-.B -w
-(optional) wait for
-.B radio433daemon
-server when starting
+.B \-w
+(optional) wait for \fBradio433daemon\fR server when starting
 .TP
-.B -P
+.B \-P
 (optional) filter and show messages from remote controls for power sockets
 .TP
-.B -T
+.B \-T
 (optional) filter and show messages from remote weather sensors
 .TP
-.B -R
+.B \-R
 (optional) filter and show messages from general purpose remote controls (work in progress)
 .TP
 .BI "-r" " radioip"
-(optional) IPv4 address of
-.B radio433daemon
-server
+(optional) IPv4 address of \fBradio433daemon\fR server
 .TP
 .BI "-p" " radioport"
-(optional) TCP port of
-.B radio433daemon
-server
+(optional) TCP port of \fBradio433daemon\fR server
 .PP
 When no parameter is specified, client tries to connect to server 127.0.0.1 on port 5433
 and displays all received messages.
@@ -71,7 +60,7 @@ With filters enabled, source type label in output string
 is prefixed with asterisk '*' to give visual indication that only messages of certain type are
 displayed.
 .SH EXAMPLES
-Example 0 - 4 identical repeated codes sent by 'Hyundai WS Senzor 77TH' weather sensor
+Example 0 - 4 identical repeated codes sent by "Hyundai WS Senzor 77TH" weather sensor
 on channel id 2 (no type filtering):
 .PP
 .RS
@@ -97,6 +86,6 @@ to display only power socket signals):
 .SH BUGS
 None so far.
 .SH SEE ALSO
-power433control(1), radio433daemon(8), sensorproxy(8), buttonhandler(8)
+.BR power433control "(1), " radiodump "(1), " radio433daemon "(8), " sensorproxy "(8), " buttonhandler "(8) "
 .SH AUTHOR
-Michal 'Micu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
+Michal "Micu" Cieslakiewicz <michal.cieslakiewicz@wp.pl>

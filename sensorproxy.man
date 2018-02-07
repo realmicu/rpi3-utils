@@ -1,28 +1,22 @@
 .TH sensorproxy "8" "May 2017" "raspik-utils" "Raspik Utilities by Micu"
 .SH NAME
-sensorproxy \- environment sensor data collector and server
+sensorproxy - environment sensor data collector and server
 .SH SYNOPSIS
 .B sensorproxy
 [
-.B -i
-.I i2cinterval
+.BI "\-i " i2cinterval
 ] [
-.B -u
-.I username
+.BI "\-u " username
 ] [
-.B -d
+.B \-d
 |
-.B -l
-.I logfile
+.BI "\-l " logfile
 ] [
-.B -P
-.I pidfile
+.BI "\-P " pidfile
 ] [
-.B -r
-.I radioip
+.BI "\-r " radioip
 [
-.B -p
-.I radioport
+.BI "\-p " radioport
 ] ] [
 .I address
 [
@@ -32,22 +26,17 @@ sensorproxy \- environment sensor data collector and server
 This utility collect environmental sensor data (such as temperature, humidity,
 pressure etc) and presents it in text format that is descriptive and easy to parse.
 Data is collected from two independent sources: devices locally connected to I2C bus
-and remote (radio) sensors reported by
-.B radio433daemon
-server.
+and remote (radio) sensors reported by \fBradio433daemon\fR server.
 .PP
 Program opens TCP port and listens for clients. Each client that connects to this socket
 is immediately updated with latest sensor data then disconnected automatically.
 .PP
-When connected to
-.B radio433daemon
-,
-.B sensorproxy
-consolidates repeated signals and decodes data. It automatically drops radio sensors that
+When connected to \fBradio433daemon\fR, \fBsensorproxy\fR consolidates repeated signals
+and decodes data. It automatically drops radio sensors that
 become silent and discover new ones. I2C devices are permanently removed from data sources
 when they become unavailable. All sensor data is validated against datasheet values.
-.B sensorproxy
-also stores minimum and maximum values for environmental data and includes them in message.
+\fBsensorproxy\fR also stores minimum and maximum values for environmental data
+and includes them in message.
 .SH MESSAGE FORMAT
 When contacted, server sends in response following text message organized in tree-like
 structure:
@@ -76,29 +65,13 @@ contains program description (version, build etc)
 mandatory string that marks beginning of sensor data
 .TP
 .B /bus/device/attribute=value
-line of text carrying one attribute of sensor;
-.B bus
-is
-.I i2c
-or
-.I radio
-,
-.I device
-consists of name and ID/address of sensor and
-.I attribute
-describes specific type of data returned by sensor; see
-.I
-EXAMPLES
-below
+line of text carrying one attribute of sensor; \fBbus\fR is \fIi2c\fR or \fIradio\fR,
+\fBdevice\fR consists of name and ID/address of sensor and \fBattribute\fR
+describes specific type of data returned by sensor; see \fIEXAMPLES\fR below
 .br
 .I Note:
-Each sensor data message starts with
-.I timestamp
-attribute followed by
-.I interval
-and ends with
-.I index
-(these are mandatory)
+Each sensor data message starts with \fItimestamp\fR attribute followed by \fIinterval\fR
+and ends with \fIindex\fR (these are mandatory)
 .TP
 .B #END
 end of message
@@ -107,22 +80,20 @@ Program recognizes following environmental sensors:
 .TP
 Connected to I2C bus:
 .I bh1750
-\- light level sensor
+- light level sensor
 .br
 .I bmp180
-\- pressure and temperature sensor
+- pressure and temperature sensor
 .br
 .I htu21d
-\- humidity and temperature sensor
+- humidity and temperature sensor
 .TP
-Remote (available via radio433daemon):
+Remote (available via \fBradio433daemon\fR):
 .I hyuws77th
-\- wireless outdoor temperature and humidity sensor Hyundai WS Senzor 77TH
+- wireless outdoor temperature and humidity sensor Hyundai WS Senzor 77TH
 and compatible
 .SH EXAMPLES
-Example message for
-.I bmp180
-pressure and temperature sensor:
+Example message for \fIbmp180\fR pressure and temperature sensor:
 .PP
 /i2c/bmp180@1,77/timestamp=1516030525.898
 .br
@@ -146,14 +117,12 @@ pressure and temperature sensor:
 .br
 /i2c/bmp180@1,77/index=1
 .PP
-Above data shows
-.I bmp180
-sensor connected to I2C bus 1 at address 0x77; measurement has been taken at time 1516030525.898
-(seconds since Epoch), sampling interval (defined in command line, see
-.I OPTIONS
-below) is set to 4 seconds (4000 ms); current pressure (in unit=hPa) is 1009.6, recorded minimum
-was 999.5 and maximum 1023.4; similar data is provided for temperature (please note signed
-values); sensor index is 1 so this is a second one (numbers start with 0).
+Above data shows \fIbmp180\fR sensor connected to I2C bus 1 at address 0x77; measurement
+has been taken at time 1516030525.898 (seconds since Epoch), sampling interval (defined in
+command line, see \fIOPTIONS\fR below) is set to 4 seconds (4000 ms); current pressure
+(in unit=hPa) is 1009.6, recorded minimum was 999.5 and maximum 1023.4; similar data
+is provided for temperature (please note signed values); sensor index is 1 so this is
+a second one (numbers start with 0).
 .PP
 Another example, radio sensor this time:
 .PP
@@ -189,11 +158,10 @@ Another example, radio sensor this time:
 .br
 /radio/hyuws77th@2,00:02/index=3
 .PP
-This data shows
-.I Hyundai WS Senzor 77TH
-on channel 2 (set by hardware switch on device); volatile (software-assigned) UUID is 0x00:0x02, this
-gets regenerated every time device is power-cycled (for example during battery replacement); sensor
-is expected to transmit data every 33 seconds; raw code received is 0x00000000A0ABF072;
+This data shows \fIHyundai WS Senzor 77TH\fR on channel 2 (set by hardware switch on device);
+volatile (software-assigned) UUID is 0x00:0x02, this gets regenerated every time device is power-cycled
+(for example during battery replacement);
+sensor is expected to transmit data every 33 seconds; raw code received is 0x00000000A0ABF072;
 in addition to temperature and humidity, device monitors temperature trend (marked as '/' for upward, '\\' for downward
 and '_' for stable) and battery level (batlow=1 indicates when low on power); program also helps to
 calculate signal strength by providing two values: maximum is number of packet repeats per transmission
@@ -201,35 +169,30 @@ calculate signal strength by providing two values: maximum is number of packet r
 (3 out of 4 in this case).
 .SH OPTIONS
 .TP
-.BI "-i" " i2cinterval"
+.BI "\-i" " i2cinterval"
 sampling interval of I2C devices in seconds (if not specified,
 skip I2C access)
 .TP
-.BI "-u" " username"
+.BI "\-u" " username"
 (optional) name of the user to switch to after initialization,
 instructs program to drop super-user privileges permanently
-(however
-.B sensorproxy
-does not require to be run by root)
+(however \fBsensorproxy\fR does not require to be run by root)
 .TP
-.B "-d"
+.B "\-d"
 (optional) debug mode, stay foreground and print activity on stdout
 .TP
-.BI "-l" " logfile"
+.BI "\-l" " logfile"
 (optional) path to log file (default is none - nothing is logged)
 .TP
-.BI "-P" " pidfile"
+.BI "\-P" " pidfile"
 (optional) path to PID file (default is /var/run/sensorproxy.pid)
 .TP
-.BI "-r" " radioip"
-IPv4 address of
-.B radio433daemon
-server (if not specified, do not contact daemon)
+.BI "\-r" " radioip"
+IPv4 address of \fBradio433daemon\fR server (if not specified,
+do not contact daemon)
 .TP
-.BI "-p" " radioport"
-(optional) TCP port of
-.B radio433daemon
-server (default is 5433)
+.BI "\-p" " radioport"
+(optional) TCP port of \fBradio433daemon\fR server (default is 5433)
 .TP
 .B address
 (optional) IPv4 address to listen on (default is any, 0.0.0.0)
@@ -238,23 +201,19 @@ server (default is 5433)
 (optional) TCP port to listen on (default is 5444)
 .TP
 .I Note:
-Please specify at least one sensor data source using
-.B -i
-or
-.B -r
+Please specify at least one sensor data source using \fB\-i\fR or \fB\-r\fR
 parameters, otherwise program will refuse to run for obvious reason.
 .SH SIGNALS
 SIGHUP signal instructs program to truncate and reopen its log file, which is
-useful during log rotation (for example by logrotate utility).
+useful during log rotation (for example by \fBlogrotate\fR utility).
 .PP
 SIGUSR1 sets minimum and maximum values for all sensors to current ones.
 .PP
-SIGUSR2 deletes all radio sensors from monitoring and initiates re-discover - if connected to
-.B radio433daemon.
-Use to quickly get rid of stale remote sensors.
+SIGUSR2 deletes all radio sensors from monitoring and initiates re-discover
+- if connected to \fBradio433daemon\fR. Use to quickly get rid of stale remote sensors.
 .SH BUGS
 None so far.
 .SH SEE ALSO
-power433control(1), radio433client(1), radio433daemon(8), buttonhandler(8)
+.BR power433control "(1), " radio433client "(1), " radiodump "(1), " radio433daemon "(8), " buttonhandler "(8) "
 .SH AUTHOR
-Michal 'Micu' Cieslakiewicz <michal.cieslakiewicz@wp.pl>
+Michal "Micu" Cieslakiewicz <michal.cieslakiewicz@wp.pl>
