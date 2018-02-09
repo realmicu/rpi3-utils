@@ -19,6 +19,8 @@ radio433daemon - radio code receiver and server
 ] [
 .BI "\-p " tcpport
 ]
+.PP
+.B radio433daemon \-V
 .SH DESCRIPTION
 This program watches GPIO line connected to radio receiver (for example
 popular and cheap 433.92 MHz boards for Arduino / Raspberry Pi) and searches
@@ -116,6 +118,9 @@ for active low or 1 for active high setup
 .TP
 .BI "\-p" " tcpport"
 (optional) TCP port to listen on (default is 5433)
+.TP
+.B \-V
+print version and exit
 .SH SIGNALS
 Sending SIGHUP signal instructs program to truncate and reopen its log file, which is
 useful during log rotation (for example by \fBlogrotate\fR utility).

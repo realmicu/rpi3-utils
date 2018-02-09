@@ -54,7 +54,7 @@ extern int optind, opterr, optopt;
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"Radio433Daemon v0.98 server"
+#define BANNER			"Radio433Daemon v0.98.2 server"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -98,7 +98,7 @@ char progname[PATH_MAX + 1], logfname[PATH_MAX + 1], pidfname[PATH_MAX + 1];
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s -g gpio [-u user] [-d | -l logfile] [-P pidfile] [-L gpio:act] [-h ipaddr] [-p tcpport]\n\n", progname);
+	printf("Usage:\n\t%s -g gpio [-V] [-u user] [-d | -l logfile] [-P pidfile] [-L gpio:act] [-h ipaddr] [-p tcpport]\n\n", progname);
 	puts("Where:");
 	puts("\t-g gpio     - GPIO pin with external RF receiver data (mandatory)");
 	puts("\t-u user     - name of the user to switch to (optional)");
@@ -108,8 +108,19 @@ void help(void)
 	puts("\t-L g:a      - LED to signal packet receiving (optional, g is BCM GPIO number and a is 0/1 for active low/high)");
 	printf("\t-h ipaddr   - IPv4 address to listen on (optional, default %s)\n", SERVER_ADDR);
 	printf("\t-p tcpport  - TCP port to listen on (optional, default is %d)\n", SERVER_PORT);
+	puts("\t-V          - show version and exit");
 	puts("\nRecognized devices - Hyundai WS Senzor 77TH, Kemot Remote Power URZ1226 compatible");
 	puts("\nSignal actions: SIGHUP (log file truncate and reopen)\n");
+}
+
+/* show version */
+void verShow(void)
+{
+#ifdef BUILDSTAMP
+	printf("%s build %s\n", BANNER, BUILDSTAMP);
+#else
+	printf("%s\n", BANNER);
+#endif
 }
 
 /* Log line header */
@@ -478,7 +489,7 @@ int main(int argc, char *argv[])
 	strcpy(pidfname, PID_DIR);
 	strcat(pidfname, progname);
 	strcat(pidfname, ".pid");
-	while((opt = getopt(argc, argv, "g:u:dl:P:L:h:p:")) != -1) {
+	while((opt = getopt(argc, argv, "g:u:dl:P:L:h:p:V")) != -1) {
 		if (opt == 'g')
 			sscanf(optarg, "%d", &gpio);
 		else if (opt == 'u')
@@ -499,6 +510,10 @@ int main(int argc, char *argv[])
 		}
 		else if (opt == 'p')
 			sscanf(optarg, "%d", &srvport);
+		else if (opt == 'V') {
+			verShow();
+			exit(EXIT_SUCCESS);
+		}
 		else if (opt == '?' || opt == 'h') {
 			help();
 			exit(EXIT_FAILURE);
