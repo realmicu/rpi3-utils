@@ -14,7 +14,7 @@ buttonhandler - button event dispatcher
 ] [
 .BI "\-r " radioip
 [
-.BI "\-p " radioport
+.BI "\-t " radioport
 ]
 .BI "\-c " codestring
 ] [
@@ -44,7 +44,7 @@ Basic compensaton for radio interference is in place, so many short interruption
 code retransmission do not generate new events and signal flow is still recognized
 as one key action.
 .SH SUPPORTED RADIO DEVICES
-Program accept following radio sources as valid device type:
+Program accepts following radio sources as valid device type:
 .TP
 .I 0x0101
 Wireless outdoor temperature and humidity sensor Hyundai WS Senzor 77TH
@@ -86,7 +86,7 @@ permanently (real ones are kept so handler program is always executed as root)
 IPv4 address of \fBradio433daemon\fR server (if not specified,
 do not contact daemon)
 .TP
-.BI "\-p" " radioport"
+.BI "\-t" " radioport"
 (optional) TCP port of \fBradio433daemon\fR server (default is 5433)
 .TP
 .BI "\-c" " codestring"

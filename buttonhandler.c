@@ -71,7 +71,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"ButtonHandler v0.95"
+#define BANNER			"ButtonHandler v0.95.1"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -262,27 +262,27 @@ struct isrftentry isrtable[] = {
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s [-V] [-d | -l logfile] [-u user] [-P pidfile] [-r serverip [-p tcpport] -c codestr] [-g gpiostr] script\n\n", progname);
+	printf("Usage:\n\t%s [-V] [-d | -l logfile] [-u user] [-P pidfile] [-r radioip [-t radioport] -c codestr] [-g gpiostr] script\n\n", progname);
 	puts("Where:");
-	puts("\t-V          - show version and exit");
-	puts("\t-d          - debug mode, stay foreground and show activity (optional)");
-	puts("\t-l logfile  - path to log file (optional, default is none)");
-	puts("\t-u user     - name of the user to switch to (optional)");
-	printf("\t-P pidfile  - path to PID file (optional, default is %s%s.pid)\n", PID_DIR, progname);
-	puts("\t-r server   - IPv4 address of radio server (optional)");
-	printf("\t-p tcpport  - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
-	puts("\t-c codestr  - radio codes definition string (optional, see below)");
-	puts("\t-g gpiostr  - GPIO buttons definition string (optional, see below)");
-	puts("\tscript      - full path to program called for button events\n");
-	puts("\tgpiostr     - list of comma-separated triplets: gpio_bcm_pin:active_high:text_label");
-	printf("\t              that describe GPIO-connected buttons; text label is max %d chars,\n", BUTTON_LABEL);
-	printf("\t              active_high is 0 or 1, up to %d GPIOs are supported\n\n", GPIO_PINS);
-	puts("\tcodestr     - list of comma-separated triplets: code_hex:device_type_hex:text_label");
-	printf("\t              that describe remote radio buttons; text label is max %d chars,\n", BUTTON_LABEL);
-	printf("\t              up to %d different codes are supported\n", MAX_RADIO_CODES);
+	puts("\t-V            - show version and exit");
+	puts("\t-d            - debug mode, stay foreground and show activity (optional)");
+	puts("\t-l logfile    - path to log file (optional, default is none)");
+	puts("\t-u user       - name of the user to switch to (optional)");
+	printf("\t-P pidfile    - path to PID file (optional, default is %s%s.pid)\n", PID_DIR, progname);
+	puts("\t-r radioip    - IPv4 address of radio server (optional)");
+	printf("\t-t radioport  - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
+	puts("\t-c codestr    - radio codes definition string (optional, see below)");
+	puts("\t-g gpiostr    - GPIO buttons definition string (optional, see below)");
+	puts("\tscript        - full path to program called for button events\n");
+	puts("\tgpiostr       - list of comma-separated triplets: gpio_bcm_pin:active_high:text_label");
+	printf("\t                that describe GPIO-connected buttons; text label is max %d chars,\n", BUTTON_LABEL);
+	printf("\t                active_high is 0 or 1, up to %d GPIOs are supported\n\n", GPIO_PINS);
+	puts("\tcodestr       - list of comma-separated triplets: code_hex:device_type_hex:text_label");
+	printf("\t                that describe remote radio buttons; text label is max %d chars,\n", BUTTON_LABEL);
+	printf("\t                up to %d different codes are supported\n", MAX_RADIO_CODES);
 	puts("\nSupported radio device types:");
-	puts("\t0x0101      - remote for radio-controlled power outlets (433.92 MHz, i.e. Kemot URZ series)");
-	puts("\t0x0201      - remote temperature/humidity sensor (433.92 MHz, Hyundai WS Senzor 77TH)");
+	puts("\t0x0101  - remote for radio-controlled power outlets (433.92 MHz, i.e. Kemot URZ series)");
+	puts("\t0x0201  - remote temperature/humidity sensor (433.92 MHz, Hyundai WS Senzor 77TH)");
 	puts("\nSignal actions: SIGHUP (log file truncate and reopen)\n");
 }
 
@@ -694,7 +694,7 @@ int main(int argc, char *argv[])
 	memset((char *)raddesc, 0, sizeof(raddesc));
 	memset((char *)gpiodesc, 0, sizeof(gpiodesc));
 
-	while((opt = getopt(argc, argv, "dl:u:P:c:r:p:g:V")) != -1) {
+	while((opt = getopt(argc, argv, "dl:u:P:c:r:t:g:V")) != -1) {
 		if (opt == 'd')
 			debugflag = 1;
 		else if (opt == 'l')
@@ -712,7 +712,7 @@ int main(int argc, char *argv[])
 				radport = RADIO_PORT;
 			radflag = 1;
 		}
-		else if (opt == 'p')
+		else if (opt == 't')
 			sscanf(optarg, "%d", &radport);
 		else if (opt == 'g') {
 			tmparg = strdup(optarg);
