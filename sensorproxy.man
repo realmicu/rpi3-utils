@@ -22,6 +22,8 @@ sensorproxy - environment sensor data collector and server
 [
 .I port
 ] ]
+.PP
+.B sensorproxy \-V
 .SH DESCRIPTION
 This utility collect environmental sensor data (such as temperature, humidity,
 pressure etc) and presents it in text format that is descriptive and easy to parse.
@@ -168,6 +170,9 @@ calculate signal strength by providing two values: maximum is number of packet r
 (hardcoded in device) and current value informs how many such packets were received without errors for last transmission
 (3 out of 4 in this case).
 .SH OPTIONS
+.TP
+.B \-V
+print version and exit
 .TP
 .BI "\-i" " i2cinterval"
 sampling interval of I2C devices in seconds (if not specified,

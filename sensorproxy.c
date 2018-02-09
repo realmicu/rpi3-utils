@@ -90,7 +90,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.98.1 (radio+i2c) server"
+#define BANNER			"SensorProxy v0.98.2 (radio+i2c) server"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
@@ -219,8 +219,9 @@ struct databh1750 {
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s [-i i2cint] [-u username] [-d | -l logfile] [-P pidfile] [-r serverip [-p serverport]] [address [port]]\n\n", progname);
+	printf("Usage:\n\t%s [-V] [-i i2cint] [-u username] [-d | -l logfile] [-P pidfile] [-r serverip [-p serverport]] [address [port]]\n\n", progname);
 	puts("Where:");
+	puts("\t-V            - show version and exit");
 	puts("\t-i i2cint     - read I2C sensors with specified interval in seconds (optional, default is skip)");
 	puts("\t-u username   - name of the user to switch to (optional, valid only if run by root)");
 	puts("\t-d            - debug mode, stay foreground and show activity (optional)");
@@ -238,6 +239,16 @@ void help(void)
 	puts("\nSignal actions: SIGHUP (log file truncate and reopen)");
 	puts("                SIGUSR1 (reset min and max values for all sensors)");
 	puts("                SIGUSR2 (delete all radio sensors, initiate re-discover)\n");
+}
+
+/* Show version */
+void verShow(void)
+{
+#ifdef BUILDSTAMP
+	printf("%s build %s\n", BANNER, BUILDSTAMP);
+#else
+	printf("%s\n", BANNER);
+#endif
 }
 
 /* Log line header */
@@ -1094,7 +1105,7 @@ int main(int argc, char *argv[])
 	strcat(pidfname, progname);
 	strcat(pidfname, ".pid");
 
-	while((opt = getopt(argc, argv, "du:i:l:P:r:p:")) != -1) {
+	while((opt = getopt(argc, argv, "du:i:l:P:r:p:V")) != -1) {
 		if (opt == 'd')
 			debugflag = 1;
 		else if (opt == 'u')
@@ -1116,6 +1127,10 @@ int main(int argc, char *argv[])
 		}
 		else if (opt == 'p')
 			sscanf(optarg, "%d", &radport);
+		else if (opt == 'V') {
+			verShow();
+			exit(EXIT_SUCCESS);
+		}
 		else if (opt == '?' || opt == 'h') {
 			help();
 			exit(EXIT_FAILURE);
