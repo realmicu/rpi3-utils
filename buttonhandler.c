@@ -71,7 +71,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"ButtonHandler v0.94"
+#define BANNER			"ButtonHandler v0.95"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define GPIO_PINS		28	/* number of Pi GPIO pins */
@@ -262,8 +262,9 @@ struct isrftentry isrtable[] = {
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s [-d | -l logfile] [-u user] [-P pidfile] [-r serverip [-p tcpport] -c codestr] [-g gpiostr] script\n\n", progname);
+	printf("Usage:\n\t%s [-V] [-d | -l logfile] [-u user] [-P pidfile] [-r serverip [-p tcpport] -c codestr] [-g gpiostr] script\n\n", progname);
 	puts("Where:");
+	puts("\t-V          - show version and exit");
 	puts("\t-d          - debug mode, stay foreground and show activity (optional)");
 	puts("\t-l logfile  - path to log file (optional, default is none)");
 	puts("\t-u user     - name of the user to switch to (optional)");
@@ -283,6 +284,16 @@ void help(void)
 	puts("\t0x0101      - remote for radio-controlled power outlets (433.92 MHz, i.e. Kemot URZ series)");
 	puts("\t0x0201      - remote temperature/humidity sensor (433.92 MHz, Hyundai WS Senzor 77TH)");
 	puts("\nSignal actions: SIGHUP (log file truncate and reopen)\n");
+}
+
+/* Show version */
+void verShow(void)
+{
+#ifdef BUILDSTAMP
+	printf("%s build %s\n", BANNER, BUILDSTAMP);
+#else
+	printf("%s\n", BANNER);
+#endif
 }
 
 /* Log line header */
@@ -683,7 +694,7 @@ int main(int argc, char *argv[])
 	memset((char *)raddesc, 0, sizeof(raddesc));
 	memset((char *)gpiodesc, 0, sizeof(gpiodesc));
 
-	while((opt = getopt(argc, argv, "dl:u:P:c:r:p:g:")) != -1) {
+	while((opt = getopt(argc, argv, "dl:u:P:c:r:p:g:V")) != -1) {
 		if (opt == 'd')
 			debugflag = 1;
 		else if (opt == 'l')
@@ -744,6 +755,10 @@ int main(int argc, char *argv[])
 					}
 				}
 			free(tmparg);
+		}
+		else if (opt == 'V') {
+			verShow();
+			exit(EXIT_SUCCESS);
 		}
 		else if (opt == '?' || opt == 'h') {
 			help();

@@ -21,6 +21,8 @@ buttonhandler - button event dispatcher
 .BI "\-g " gpiostring
 ]
 .B program
+.PP
+.B buttonhandler \-V
 .SH DESCRIPTION
 This program intercepts button events from GPIO lines and remote radio controllers
 and runs a defined binary or script, called event handler, every time such event
@@ -62,6 +64,9 @@ Although remotely controlled power sockets accept only codes that comply to spec
 has the same modulation type and data length can be configured to trigger event.
 Any universal remote with custom codes programmed is supported as long as it emits compatible signals.
 .SH OPTIONS
+.TP
+.B \-V
+print version and exit
 .TP
 .BI "\-u" " username"
 (optional) name of the user to switch to after initialization,
