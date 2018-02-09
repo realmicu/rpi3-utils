@@ -9,6 +9,8 @@ power433control - program to control remote power sockets
 .BI "\-c " count
 ]
 .BR oper0 " [ " oper1 " ] ..."
+.PP
+.B power433control \-V
 .SH DESCRIPTION
 This utility sends radio codes that control remote power sockets (wide range of devices including
 Kemot URZ1226 and compatible). Codes (in OOK encoding) are sent directly to radio transmitter
@@ -26,6 +28,9 @@ even though any 10-bit DIP switch combination is accepted by power socket circui
 a power socket, so all 1024 combinations (most of them out of control with vendor remote) are
 supported and available.
 .SH OPTIONS
+.TP
+.B \-V
+print version and exit
 .TP
 .BI "\-g" " gpio"
 (optional) GPIO pin number (BCM scheme) with external RF transmitter connected (default is 20)

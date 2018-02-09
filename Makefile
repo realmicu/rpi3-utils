@@ -200,7 +200,7 @@ radio433client:	radio433client.c radio433_dev.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
 power433control:	power433control.c radio433_lib.o radio433_dev.o
-	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS)
+	$(CC) -o $@ $^ $(CFLAGS) $(RADIO433_EXTRA_LIBS) -DBUILDSTAMP=\"$(BUILDSTAMP)\"
 
 radiodump:	radiodump.c
 	$(CC) -o $@ $< $(CFLAGS) $(RADIO433_EXTRA_LIBS) -DHAS_CPUFREQ -lcpufreq -DBUILDSTAMP=\"$(BUILDSTAMP)\"

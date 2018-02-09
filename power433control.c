@@ -17,6 +17,7 @@
 
 #define	CODE_RETRANS	12	/* set to >0 override default */
 #define	DEF_GPIO_TX	20	/* RF TX pin */
+#define	BANNER		"power433control v0.95"
 
 extern char *optarg;
 extern int optind, opterr, optopt;
@@ -33,11 +34,22 @@ struct cmd {
 /* Show help */
 void help(char *progname)
 {
-	printf("\nUsage:\n\t%s [-g gpio] [-c count] {oper0} [oper1] ...\n\n", progname);
+	printf("\nUsage:\n\t%s [-V] [-g gpio] [-c count] {oper0} [oper1] ...\n\n", progname);
 	puts("Where:");
+	puts("\t-V       - show version and exit");
 	printf("\t-g gpio  - BCM GPIO pin with external RF transmitter connected (optional, default is %d)\n", DEF_GPIO_TX);
 	printf("\t-c count - number of codes sent in one transmission (optional, default is %d)\n", CODE_RETRANS);
 	puts("\toper     - operation defined as system:device:{on|off} (at least one)\n");
+}
+
+/* show version */
+void verShow(void)
+{
+#ifdef BUILDSTAMP
+	printf("%s build %s\n", BANNER, BUILDSTAMP);
+#else
+	printf("%s\n", BANNER);
+#endif
 }
 
 /* change sheduling priority */
@@ -120,11 +132,15 @@ int main(int argc, char *argv[])
 	/* get parameters */
 	gpio = DEF_GPIO_TX;
 	cnt = CODE_RETRANS;
-	while((opt = getopt(argc, argv, "g:c:")) != -1) {
+	while((opt = getopt(argc, argv, "g:c:V")) != -1) {
 		if (opt == 'g')
 			sscanf(optarg, "%d", &gpio);
 		else if (opt == 'c')
 			sscanf(optarg, "%d", &cnt);
+		else if (opt == 'V') {
+			verShow();
+			exit(EXIT_SUCCESS);
+		}
 		else if (opt == '?' || opt == 'h') {
 			help(argv[0]);
 			exit(EXIT_FAILURE);
