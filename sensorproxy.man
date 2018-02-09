@@ -16,12 +16,12 @@ sensorproxy - environment sensor data collector and server
 ] [
 .BI "\-r " radioip
 [
-.BI "\-p " radioport
+.BI "\-t " radioport
 ] ] [
-.I address
-[
-.I port
-] ]
+.BI "\-h " address
+] [
+.BI "\-p " tcpport
+]
 .PP
 .B sensorproxy \-V
 .SH DESCRIPTION
@@ -196,13 +196,13 @@ instructs program to drop super-user privileges permanently
 IPv4 address of \fBradio433daemon\fR server (if not specified,
 do not contact daemon)
 .TP
-.BI "\-p" " radioport"
+.BI "\-t" " radioport"
 (optional) TCP port of \fBradio433daemon\fR server (default is 5433)
 .TP
-.B address
+.BI "\-h" " address"
 (optional) IPv4 address to listen on (default is any, 0.0.0.0)
 .TP
-.B port
+.BI "\-p" " tcpport"
 (optional) TCP port to listen on (default is 5444)
 .TP
 .I Note:

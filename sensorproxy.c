@@ -90,7 +90,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.98.2 (radio+i2c) server"
+#define BANNER			"SensorProxy v0.98.4 (radio+i2c) server"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
@@ -219,18 +219,18 @@ struct databh1750 {
 /* Show help */
 void help(void)
 {
-	printf("Usage:\n\t%s [-V] [-i i2cint] [-u username] [-d | -l logfile] [-P pidfile] [-r serverip [-p serverport]] [address [port]]\n\n", progname);
+	printf("Usage:\n\t%s [-V] [-i i2cint] [-u username] [-d | -l logfile] [-P pidfile] [-r radioip [-t radioport]] [-h address] [-p tcpport]\n\n", progname);
 	puts("Where:");
-	puts("\t-V            - show version and exit");
 	puts("\t-i i2cint     - read I2C sensors with specified interval in seconds (optional, default is skip)");
 	puts("\t-u username   - name of the user to switch to (optional, valid only if run by root)");
 	puts("\t-d            - debug mode, stay foreground and show activity (optional)");
 	puts("\t-l logfile    - path to log file (optional, default is none)");
 	printf("\t-P pidfile    - path to PID file (optional, default is %s%s.pid)\n", PID_DIR, progname);
-	printf("\t-r serverip   - IPv4 address of radio server (optional)\n");
-	printf("\t-p serverport - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
-	printf("\taddress       - IPv4 address to listen on (optional, default %s)\n", SERVER_ADDR);
-	printf("\tport          - TCP port to listen on (optional, default is %d)\n", SERVER_PORT);
+	printf("\t-r radioip    - IPv4 address of radio server (optional)\n");
+	printf("\t-t radioport  - TCP port of radio server (optional, default is %d)\n", RADIO_PORT);
+	printf("\t-h address    - IPv4 address to listen on (optional, default %s)\n", SERVER_ADDR);
+	printf("\t-p tcpport    - TCP port to listen on (optional, default is %d)\n", SERVER_PORT);
+	puts("\t-V            - show version and exit");
 	puts("\nSupported source devices:");
 	puts("\thyuws77th (radio) - temperature/humidity 433.92 MHz radio sensor Hyundai WS Senzor 77TH");
 	puts("\thtu21d      (i2c) - humidity/temperature local sensor HTU21D");
@@ -1105,7 +1105,7 @@ int main(int argc, char *argv[])
 	strcat(pidfname, progname);
 	strcat(pidfname, ".pid");
 
-	while((opt = getopt(argc, argv, "du:i:l:P:r:p:V")) != -1) {
+	while((opt = getopt(argc, argv, "du:i:l:P:r:t:h:p:V")) != -1) {
 		if (opt == 'd')
 			debugflag = 1;
 		else if (opt == 'u')
@@ -1125,8 +1125,16 @@ int main(int argc, char *argv[])
 				radport = RADIO_PORT;
 			radflag = 1;
 		}
-		else if (opt == 'p')
+		else if (opt == 't')
 			sscanf(optarg, "%d", &radport);
+		else if (opt == 'h') {
+			if (!inet_aton(optarg, &srvsin.sin_addr)) {
+				dprintf(STDERR_FILENO, "Invalid IPv4 address specification.\n");
+				exit(EXIT_FAILURE);
+			}
+		}
+		else if (opt == 'p')
+			sscanf(optarg, "%d", &srvport);
 		else if (opt == 'V') {
 			verShow();
 			exit(EXIT_SUCCESS);
@@ -1163,15 +1171,6 @@ int main(int argc, char *argv[])
 		dprintf(STDERR_FILENO, "No sensor data source selected, specify at least one (radio daemon, I2C or both).\n");
 		exit(EXIT_FAILURE);
 	}
-
-	if (optind < argc)
-		if (!inet_aton(argv[optind++], &srvsin.sin_addr)) {
-			dprintf(STDERR_FILENO, "Invalid IPv4 address specification.\n");
-			exit(EXIT_FAILURE);
-		}
-
-	if (optind < argc)
-		sscanf(argv[optind], "%d", &srvport);
 
 	srvsin.sin_port = htons(srvport);
 	radsin.sin_port = htons(radport);
