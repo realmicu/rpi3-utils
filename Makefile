@@ -10,7 +10,7 @@ PROGS = htu21d_test lcd_test lcd_env_show lcd_chars ncurstest lcdproc_env \
 	power433send power433ctrlite bh1750_test env_mon ssd1306_test \
 	ssd1306_font ssd1306_psf2ch ssd1306_bmp thermo433sniffer \
 	radio433sniffer radio433daemon radio433client sensorproxy \
-	net_env_mon power433control buttonhandler radiodump
+	net_env_mon power433control buttonhandler radiodump bme280_test
 
 BUILDSTAMP = $(shell echo `date '+%Y%m%d-git@'``git log --oneline -1 | cut -d' ' -f1`)
 
@@ -63,6 +63,18 @@ bh1750_lib.o:	bh1750_lib.c
 
 bh1750_test:	bh1750_test.c bh1750_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) $(BH1750_EXTRA_LIBS) -pthread
+
+#####################################################
+# BME280 Pressure/Temperature/Humidity sensor (I2C) #
+#####################################################
+
+BME280_EXTRA_LIBS = -lwiringPi
+
+bme280_lib.o:	bme280_lib.c
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+bme280_test:	bme280_test.c bme280_lib.o
+	$(CC) -o $@ $^ $(CFLAGS) $(BME280_EXTRA_LIBS)
 
 ##############################
 # HD44780 LCD display (GPIO) #
