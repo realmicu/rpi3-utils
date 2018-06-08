@@ -58,6 +58,12 @@ struct bh1750_dataptr {
 	char *lightmin, *lightcur, *lightmax, *lightunit;
 };
 
+struct bme280_dataptr {
+	char *pressmin, *presscur, *pressmax, *pressunit;
+	char *tempmin, *tempcur, *tempmax, *tempunit;
+	char *humidmin, *humidcur, *humidmax, *humidunit;
+};
+
 /* Show help */
 void help(char *progname)
 {
@@ -66,7 +72,7 @@ void help(char *progname)
 	printf("\t-t N\t - update every N seconds (optional, default: %d)\n", DEFAULT_DELAY_SEC);
 	printf("\tserver\t - IPv4 address of sensor proxy server (optional, default: %s)\n", SPROXY_ADDR);
 	printf("\tport\t - TCP port of sensor proxy server (optional, default: %d)\n", SPROXY_PORT);
-	puts("\nRecognized devices - hyuws77th, htu21d, bmp180, bh1750\n");
+	puts("\nRecognized devices - hyuws77th, htu21d, bmp180, bh1750, bme280\n");
 }
 
 /* nCurses */
@@ -471,6 +477,104 @@ int fillData_bmp180(const char *line, struct bmp180_dataptr *data)
 	return 0;
 }
 
+int fillData_bme280(const char *line, struct bme280_dataptr *data)
+{
+	char *tmpptr;
+
+	if (findValue(line, "/timestamp=")) {
+		memset(data, 0, sizeof(struct bme280_dataptr));
+		return 0;
+	} else if (findValue(line, "/index="))
+		return 1;
+
+	if (!data->pressmin) {
+		tmpptr = findValue(line, "/press/min=");
+		if (tmpptr) {
+			data->pressmin = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->presscur) {
+		tmpptr = findValue(line, "/press/cur=");
+		if (tmpptr) {
+			data->presscur = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->pressmax) {
+		tmpptr = findValue(line, "/press/max=");
+		if (tmpptr) {
+			data->pressmax = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->pressunit) {
+		tmpptr = findValue(line, "/press/unit=");
+		if (tmpptr) {
+			data->pressunit = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->tempmin) {
+		tmpptr = findValue(line, "/temp/min=");
+		if (tmpptr) {
+			data->tempmin = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->tempcur) {
+		tmpptr = findValue(line, "/temp/cur=");
+		if (tmpptr) {
+			data->tempcur = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->tempmax) {
+		tmpptr = findValue(line, "/temp/max=");
+		if (tmpptr) {
+			data->tempmax = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->tempunit) {
+		tmpptr = findValue(line, "/temp/unit=");
+		if (tmpptr) {
+			data->tempunit = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->humidmin) {
+		tmpptr = findValue(line, "/humid/min=");
+		if (tmpptr) {
+			data->humidmin = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->humidcur) {
+		tmpptr = findValue(line, "/humid/cur=");
+		if (tmpptr) {
+			data->humidcur = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->humidmax) {
+		tmpptr = findValue(line, "/humid/max=");
+		if (tmpptr) {
+			data->humidmax = tmpptr;
+			return 0;
+		}
+	}
+	if (!data->humidunit) {
+		tmpptr = findValue(line, "/humid/unit=");
+		if (tmpptr) {
+			data->humidunit = tmpptr;
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
 int fillData_bh1750(const char *line, struct bh1750_dataptr *data)
 {
 	char *tmpptr;
@@ -530,11 +634,13 @@ int main(int argc, char *argv[])
 	const char *bmp180_labels[2] = { "Pressure", "Temperature" };
 	const char *bh1750_labels[1] = { "Luminance" };
 	const char *hyuw77_labels[3] = { "Temperature", "Humidity", "Information" };
+	const char *bme280_labels[3] = { "Pressure", "Temperature", "Humidity" };
 	struct hyuw77_dataptr hyuw77_dptr;
 	struct htu21d_dataptr htu21d_dptr;
 	struct bmp180_dataptr bmp180_dptr;
 	struct bh1750_dataptr bh1750_dptr;
-	int hyuw77_ok, htu21d_ok, bmp180_ok, bh1750_ok;
+	struct bme280_dataptr bme280_dptr;
+	int hyuw77_ok, htu21d_ok, bmp180_ok, bh1750_ok, bme280_ok;
 
 	/* clear field */
 	memset(spcbuf, ' ', MAX_FIELD_LEN);
@@ -576,6 +682,7 @@ int main(int argc, char *argv[])
 	lastline = drawHeader();
 	lastline = drawSensorFrame(lastline, "HTU21D", 2, htu21d_labels);
 	lastline = drawSensorFrame(lastline, "BMP180", 2, bmp180_labels);
+	lastline = drawSensorFrame(lastline, "BME280", 3, bme280_labels);
 	lastline = drawSensorFrame(lastline, "BH1750", 1, bh1750_labels);
 	lastline = drawSensorFrame(lastline, "HYUW77", 3, hyuw77_labels);
 	refresh();
@@ -586,12 +693,14 @@ int main(int argc, char *argv[])
 		htu21d_ok = 0;
 		bmp180_ok = 0;
 		bh1750_ok = 0;
+		bme280_ok = 0;
 		clfd = connectServer(&spxsin);
 		if (clfd >= 0) {
 			memset(&hyuw77_dptr, 0, sizeof(struct hyuw77_dataptr));
 			memset(&htu21d_dptr, 0, sizeof(struct htu21d_dataptr));
 			memset(&bmp180_dptr, 0, sizeof(struct bmp180_dataptr));
 			memset(&bh1750_dptr, 0, sizeof(struct bh1750_dataptr));
+			memset(&bme280_dptr, 0, sizeof(struct bme280_dataptr));
 			msglen = recv(clfd, buf, RCVBUF_SIZE, 0);
 			if (msglen > 0) {
 				bufptrn = buf;
@@ -599,23 +708,23 @@ int main(int argc, char *argv[])
 					bufptr = strsep(&bufptrn, "\n");
 					if (strstr(bufptr, "/radio/hyuws77th@")) {
 						if (fillData_hyuw77(bufptr, &hyuw77_dptr)) {
-							printField(13, COLMIN, 0, 1, "%s %s",
+							printField(19, COLMIN, 0, 1, "%s %s",
 								   hyuw77_dptr.tempmin, hyuw77_dptr.tempunit);
-							printField(13, COLNOW, 1, 1, "%s %s",
+							printField(19, COLNOW, 1, 1, "%s %s",
 								   hyuw77_dptr.tempcur, hyuw77_dptr.tempunit);
-							printField(13, COLMAX, 0, 1, "%s %s",
+							printField(19, COLMAX, 0, 1, "%s %s",
 								   hyuw77_dptr.tempmax, hyuw77_dptr.tempunit);
-							printField(15, COLMIN, 0, 1, "%s %s",
+							printField(21, COLMIN, 0, 1, "%s %s",
 								   hyuw77_dptr.humidmin, hyuw77_dptr.humidunit);
-							printField(15, COLNOW, 1, 1, "%s %s",
+							printField(21, COLNOW, 1, 1, "%s %s",
 								   hyuw77_dptr.humidcur, hyuw77_dptr.humidunit);
-							printField(15, COLMAX, 0, 1, "%s %s",
+							printField(21, COLMAX, 0, 1, "%s %s",
 								   hyuw77_dptr.humidmax, hyuw77_dptr.humidunit);
-							printField(17, COLMIN, 0, 0, "Sig: %s/%s",
+							printField(23, COLMIN, 0, 0, "Sig: %s/%s",
 								   hyuw77_dptr.sigcur, hyuw77_dptr.sigmax);
-							printField(17, COLNOW, 0, 0, "Temp: %s",
+							printField(23, COLNOW, 0, 0, "Temp: %s",
 								   hyuw77_dptr.temptrnd);
-							printField(17, COLMAX, 0, 0, "BatLow: %s",
+							printField(23, COLMAX, 0, 0, "BatLow: %s",
 								   hyuw77_dptr.batlow);
 							hyuw77_ok = 1;
 						}
@@ -651,13 +760,35 @@ int main(int argc, char *argv[])
 								   bmp180_dptr.tempmax, bmp180_dptr.tempunit);
 							bmp180_ok = 1;
 						}
+					} else if (strstr(bufptr, "/i2c/bme280@")) {
+						if (fillData_bme280(bufptr, &bme280_dptr)) {
+							printField(11, COLMIN, 0, 1, "%s %s",
+								   bme280_dptr.pressmin, bme280_dptr.pressunit);
+							printField(11, COLNOW, 1, 1, "%s %s",
+								   bme280_dptr.presscur, bme280_dptr.pressunit);
+							printField(11, COLMAX, 0, 1, "%s %s",
+								   bme280_dptr.pressmax, bme280_dptr.pressunit);
+							printField(13, COLMIN, 0, 1, "%s %s",
+								   bme280_dptr.tempmin, bme280_dptr.tempunit);
+							printField(13, COLNOW, 1, 1, "%s %s",
+								   bme280_dptr.tempcur, bme280_dptr.tempunit);
+							printField(13, COLMAX, 0, 1, "%s %s",
+								   bme280_dptr.tempmax, bme280_dptr.tempunit);
+							printField(15, COLMIN, 0, 1, "%s %s",
+								   bme280_dptr.humidmin, bme280_dptr.humidunit);
+							printField(15, COLNOW, 1, 1, "%s %s",
+								   bme280_dptr.humidcur, bme280_dptr.humidunit);
+							printField(15, COLMAX, 0, 1, "%s %s",
+								   bme280_dptr.humidmax, bme280_dptr.humidunit);
+							bme280_ok = 1;
+						}
 					} else if (strstr(bufptr, "/i2c/bh1750@")) {
 						if (fillData_bh1750(bufptr, &bh1750_dptr)) {
-							printField(11, COLMIN, 0, 1, "%s %s",
+							printField(17, COLMIN, 0, 1, "%s %s",
 								   bh1750_dptr.lightmin, bh1750_dptr.lightunit);
-							printField(11, COLNOW, 1, 1, "%s %s",
+							printField(17, COLNOW, 1, 1, "%s %s",
 								   bh1750_dptr.lightcur, bh1750_dptr.lightunit);
-							printField(11, COLMAX, 0, 1, "%s %s",
+							printField(17, COLMAX, 0, 1, "%s %s",
 								   bh1750_dptr.lightmax, bh1750_dptr.lightunit);
 							bh1750_ok = 1;
 						}
@@ -670,15 +801,15 @@ int main(int argc, char *argv[])
 		}
 
 		if (!hyuw77_ok) {
-			mvaddstr(13, COLMIN, spcbuf);
-			mvaddstr(13, COLNOW, spcbuf);
-			mvaddstr(13, COLMAX, spcbuf);
-			mvaddstr(15, COLMIN, spcbuf);
-			mvaddstr(15, COLNOW, spcbuf);
-			mvaddstr(15, COLMAX, spcbuf);
-			mvaddstr(17, COLMIN, spcbuf);
-			mvaddstr(17, COLNOW, spcbuf);
-			mvaddstr(17, COLMAX, spcbuf);
+			mvaddstr(19, COLMIN, spcbuf);
+			mvaddstr(19, COLNOW, spcbuf);
+			mvaddstr(19, COLMAX, spcbuf);
+			mvaddstr(21, COLMIN, spcbuf);
+			mvaddstr(21, COLNOW, spcbuf);
+			mvaddstr(21, COLMAX, spcbuf);
+			mvaddstr(23, COLMIN, spcbuf);
+			mvaddstr(23, COLNOW, spcbuf);
+			mvaddstr(23, COLMAX, spcbuf);
 		}
 
 		if (!htu21d_ok) {
@@ -699,13 +830,25 @@ int main(int argc, char *argv[])
 			mvaddstr(9, COLMAX, spcbuf);
 		}
 
-		if (!bh1750_ok) {
+		if (!bme280_ok) {
 			mvaddstr(11, COLMIN, spcbuf);
 			mvaddstr(11, COLNOW, spcbuf);
 			mvaddstr(11, COLMAX, spcbuf);
+			mvaddstr(13, COLMIN, spcbuf);
+			mvaddstr(13, COLNOW, spcbuf);
+			mvaddstr(13, COLMAX, spcbuf);
+			mvaddstr(15, COLMIN, spcbuf);
+			mvaddstr(15, COLNOW, spcbuf);
+			mvaddstr(15, COLMAX, spcbuf);
 		}
 
-		if (!hyuw77_ok || !htu21d_ok || !bmp180_ok || !bh1750_ok) {
+		if (!bh1750_ok) {
+			mvaddstr(17, COLMIN, spcbuf);
+			mvaddstr(17, COLNOW, spcbuf);
+			mvaddstr(17, COLMAX, spcbuf);
+		}
+
+		if (!hyuw77_ok || !htu21d_ok || !bmp180_ok || !bh1750_ok || !bme280_ok) {
 			move(lastline + 1, 0);
 			refresh();
 		}
