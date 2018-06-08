@@ -9,6 +9,7 @@
  *   htu21d - HTU21D temperature/humidity
  *   bmp180 - BMP180 temperature/pressure
  *   bh1750 - BH1750 light sensor
+ *   bme280 - BME280 temperature/pressure/humidity
  *
  *  Message format:
  *  /BUS/DEVICE/PROPERTY=VALUE
@@ -85,12 +86,13 @@
 #include "htu21d_lib.h"
 #include "bmp180_lib.h"
 #include "bh1750_lib.h"
+#include "bme280_lib.h"
 
 /* *************** */
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.98.5 (radio+i2c) server"
+#define BANNER			"SensorProxy v0.98.6 (radio+i2c) server"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
@@ -128,6 +130,7 @@
 #define SL_HTU21D		"htu21d"
 #define SL_BMP180		"bmp180"
 #define SL_BH1750		"bh1750"
+#define SL_BME280		"bme280"
 
 /* Sensor bus */
 #define SB_NULL			0
@@ -139,6 +142,7 @@
 #define ST_I2C_HTU21D		1
 #define ST_I2C_BMP180		2
 #define ST_I2C_BH1750		3
+#define ST_I2C_BME280		4
 
 /* ********************** */
 /* *  Global variables  * */
@@ -218,6 +222,11 @@ struct databh1750 {
 	struct fvalentry light;
 };
 
+struct databme280 {
+	struct i2centry i2c;
+	struct fvalentry press, temp, humid;
+};
+
 /* *************** */
 /* *  Functions  * */
 /* *************** */
@@ -242,6 +251,7 @@ void help(void)
 	puts("\thtu21d      (i2c) - humidity/temperature local sensor HTU21D");
 	puts("\tbmp180      (i2c) - pressure/temperature local sensor BMP180");
 	puts("\tbh1750      (i2c) - light level local sensor BH1750");
+	puts("\tbme280      (i2c) - pressure/temperature/humidity local sensor BME280");
 	puts("\nSignal actions: SIGHUP (log file truncate and reopen)");
 	puts("                SIGUSR1 (reset min and max values for all sensors)");
 	puts("                SIGUSR2 (delete all radio sensors, initiate re-discover)\n");
@@ -363,18 +373,22 @@ void endProcess(int status)
 			s = &senstbl[i];
 			if (s->bus == SB_I2C) {
 				c = (struct i2centry *)(s->data);
-				if (c->id == HTU21D_I2C_ADDR &&
+				if (s->type == ST_I2C_HTU21D &&
 				    c->fd >= 0) {
 					HTU21D_softReset(c->fd);
 					close(c->fd);
-				} else if (c->id == BMP180_I2C_ADDR &&
+				} else if (s->type == ST_I2C_BMP180 &&
 					   c->fd >= 0) {
 					BMP180_softReset(c->fd);
 					close(c->fd);
-				} else if (c->id == BH1750_I2C_ADDR &&
+				} else if (s->type == ST_I2C_BH1750 &&
 					   c->fd >= 0) {
 					BH1750_softReset(c->fd);
 					BH1750_powerDown(c->fd);
+					close(c->fd);
+				} else if (s->type == ST_I2C_BME280 &&
+					   c->fd >= 0) {
+					BME280_softReset(c->fd);
 					close(c->fd);
 				}
 			}
@@ -487,6 +501,7 @@ int formatMessage(char *buf, size_t len)
 	struct datahtu21d *dht2;
 	struct databmp180 *dbm1;
 	struct databh1750 *dbh1;
+	struct databme280 *dbm2;
 
         memset(buf, 0, len);
 	bufptr = buf;
@@ -557,6 +572,20 @@ int formatMessage(char *buf, size_t len)
 				bufptr += sprintf(bufptr, "%s/light/cur=%.1lf\n", dbuf, dbh1->light.cur);
 				bufptr += sprintf(bufptr, "%s/light/max=%.1lf\n", dbuf, dbh1->light.max);
 				bufptr += sprintf(bufptr, "%s/light/unit=%s\n", dbuf, dbh1->light.unit);
+			} else if (s->type == ST_I2C_BME280) {
+				dbm2 = (struct databme280 *)(s->data);
+				bufptr += sprintf(bufptr, "%s/press/min=%.1lf\n", dbuf, dbm2->press.min);
+				bufptr += sprintf(bufptr, "%s/press/cur=%.1lf\n", dbuf, dbm2->press.cur);
+				bufptr += sprintf(bufptr, "%s/press/max=%.1lf\n", dbuf, dbm2->press.max);
+				bufptr += sprintf(bufptr, "%s/press/unit=%s\n", dbuf, dbm2->press.unit);
+				bufptr += sprintf(bufptr, "%s/temp/min=%+.1lf\n", dbuf, dbm2->temp.min);
+				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dbm2->temp.cur);
+				bufptr += sprintf(bufptr, "%s/temp/max=%+.1lf\n", dbuf, dbm2->temp.max);
+				bufptr += sprintf(bufptr, "%s/temp/unit=%s\n", dbuf, dbm2->temp.unit);
+				bufptr += sprintf(bufptr, "%s/humid/min=%.1lf\n", dbuf, dbm2->humid.min);
+				bufptr += sprintf(bufptr, "%s/humid/cur=%.1lf\n", dbuf, dbm2->humid.cur);
+				bufptr += sprintf(bufptr, "%s/humid/max=%.1lf\n", dbuf, dbm2->humid.max);
+				bufptr += sprintf(bufptr, "%s/humid/unit=%s\n", dbuf, dbm2->humid.unit);
 			}
 			bufptr += sprintf(bufptr, "%s/index=%d\n", dbuf, i);
 		} else
@@ -650,6 +679,7 @@ void sensorResetMinMax(void)
 	struct datahtu21d *dht2;
 	struct databmp180 *dbm1;
 	struct databh1750 *dbh1;
+	struct databme280 *dbm2;
 
 	sem_wait(&sensem);
 	for(i = 0; i < MAX_SENSORS; i++) {
@@ -677,6 +707,14 @@ void sensorResetMinMax(void)
 				dbh1 = (struct databh1750 *)(s->data);
 				dbh1->light.min = dbh1->light.cur;
 				dbh1->light.max = dbh1->light.cur;
+			} else if (s->type == ST_I2C_BME280) {
+				dbm2 = (struct databme280 *)(s->data);
+				dbm2->press.min = dbm2->press.cur;
+				dbm2->press.max = dbm2->press.cur;
+				dbm2->temp.min = dbm2->temp.cur;
+				dbm2->temp.max = dbm2->temp.cur;
+				dbm2->humid.min = dbm2->humid.cur;
+				dbm2->humid.max = dbm2->humid.cur;
 			}
 		}
         }
@@ -839,7 +877,8 @@ void *i2cSensorThread(void *arg)
 	struct datahtu21d *dht2;
 	struct databmp180 *dbm1;
 	struct databh1750 *dbh1;
-	double v0, v1;
+	struct databme280 *dbm2;
+	double v0, v1, v2;
 
 	sigfillset(&blkset);
 	pthread_sigmask(SIG_BLOCK, &blkset, NULL);
@@ -904,6 +943,26 @@ void *i2cSensorThread(void *arg)
 						logprintf(logfd, LOG_DEBUG,
 							  "sensor \"%s\" [%d] read complete (l=%.1lf)\n",
 							  s->label, i, v0);
+				} else if (s->type == ST_I2C_BME280) {
+					gettimeofday(&ts, NULL);
+					if (BME280_getSensorData(c->fd, &v0, &v1, &v2))
+						continue;
+					s->tsec = ts.tv_sec;
+					s->tmsec = ts.tv_usec / 1000;
+					dbm2 = (struct databme280 *)(s->data);
+					dbm2->temp.cur = v0;
+					dbm2->temp.min = MIN(v0, dbm2->temp.min);
+					dbm2->temp.max = MAX(v0, dbm2->temp.max);
+					dbm2->press.cur = v1;
+					dbm2->press.min = MIN(v1, dbm2->press.min);
+					dbm2->press.max = MAX(v1, dbm2->press.max);
+					dbm2->humid.cur = v2;
+					dbm2->humid.min = MIN(v2, dbm2->humid.min);
+					dbm2->humid.max = MAX(v2, dbm2->humid.max);
+					if (debugflag)
+						logprintf(logfd, LOG_DEBUG,
+							  "sensor \"%s\" [%d] read complete (p=%.1lf, t=%.1lf, h=%.1lf)\n",
+							  s->label, i, v1, v0, v2);
 				}
 			}
 		}
@@ -1051,6 +1110,66 @@ int initBH1750(int idx)
 	dbh1->light.min = l;
 	dbh1->light.max = l;
 	strncpy(dbh1->light.unit, "lx", UNIT_LABEL);
+
+	return fd;
+}
+
+int initBME280(int idx, int alt)
+{
+	int fd, id;
+	struct timeval ts;
+        struct sensorentry *s;
+	struct databme280 *dbm2;
+	double p, t, h;
+
+	/* Initialize device */
+	if (!alt)
+		id = BME280_I2C_DEF_ADDR;
+	else
+		id = BME280_I2C_ALT_ADDR;
+	fd = BME280_initPi(&id);
+	if (fd < 0)
+		return -1;
+
+	/* soft reset */
+	BME280_softReset(fd);
+
+        /* check if BME280 responds */
+	if (!BME280_isPresent(fd))
+		return -2;
+
+	BME280_getCalibrationData(fd);
+	BME280_setupFullMode(fd);
+
+	/* initialize structure */
+	if (BME280_getSensorData(fd, &t, &p, &h))
+		return -3;
+
+	gettimeofday(&ts, NULL);
+	s = &senstbl[idx];
+	s->tsec = ts.tv_sec;
+	s->tmsec = ts.tv_usec / 1000;
+	s->interval = i2cdelay * 1000;
+	s->bus = SB_I2C;
+	s->type = ST_I2C_BME280;
+	strncpy(s->label, SL_BME280, SENSOR_LABEL);
+	s->data = malloc(sizeof(struct databme280));
+	dbm2 = (struct databme280 *)(s->data);
+	dbm2->i2c.bus = RPI3I2C_BUS;
+	dbm2->i2c.id = id;
+	dbm2->i2c.fd = fd;
+	dbm2->temp.cur = t;
+	dbm2->temp.min = t;
+	dbm2->temp.max = t;
+	strncpy(dbm2->temp.unit, "C", UNIT_LABEL);
+	dbm2->press.cur = p;
+	dbm2->press.min = p;
+	dbm2->press.max = p;
+	strncpy(dbm2->press.unit, "hPa", UNIT_LABEL);
+	dbm2->humid.cur = h;
+	dbm2->humid.min = h;
+	dbm2->humid.max = h;
+	strncpy(dbm2->humid.unit, "%", UNIT_LABEL);
 
 	return fd;
 }
@@ -1353,6 +1472,15 @@ int main(int argc, char *argv[])
 		if (initBMP180(idx) >= 0) {
 			logprintf(logfd, LOG_NOTICE, "bmp180 I2C sensor at %d,0x%02X [%d] added to monitor\n",
 				  RPI3I2C_BUS, BMP180_I2C_ADDR, idx);
+			idx++;
+		} else if (initBME280(idx, 0) >= 0) {
+			logprintf(logfd, LOG_NOTICE, "bme280 I2C sensor at %d,0x%02X [%d] added to monitor\n",
+				  RPI3I2C_BUS, BME280_I2C_DEF_ADDR, idx);
+			idx++;
+		}
+		if (initBME280(idx, 1) >= 0) {
+			logprintf(logfd, LOG_NOTICE, "bme280 I2C sensor at %d,0x%02X [%d] added to monitor\n",
+				  RPI3I2C_BUS, BME280_I2C_ALT_ADDR, idx);
 			idx++;
 		}
 		if (initBH1750(idx) >= 0) {

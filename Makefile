@@ -221,7 +221,7 @@ radiodump:	radiodump.c
 # Networked environment monitors #
 ##################################
 
-sensorproxy:	sensorproxy.c radio433_dev.o htu21d_lib.o bmp180_lib.o bh1750_lib.o
+sensorproxy:	sensorproxy.c radio433_dev.o htu21d_lib.o bmp180_lib.o bh1750_lib.o bme280_lib.o
 	$(CC) -o $@ $^ $(CFLAGS) -lwiringPi -pthread -DBUILDSTAMP=\"$(BUILDSTAMP)\"
 
 net_env_mon:	net_env_mon.c
