@@ -945,6 +945,7 @@ void *i2cSensorThread(void *arg)
 							  s->label, i, v0);
 				} else if (s->type == ST_I2C_BME280) {
 					gettimeofday(&ts, NULL);
+					BME280_setupFullMode(c->fd);	/* required for forced mode */
 					if (BME280_getSensorData(c->fd, &v0, &v1, &v2))
 						continue;
 					s->tsec = ts.tv_sec;
@@ -1139,9 +1140,13 @@ int initBME280(int idx, int alt)
 		return -2;
 
 	BME280_getCalibrationData(fd);
-	BME280_setupFullMode(fd);
 
 	/* initialize structure */
+	BME280_setupFullMode(fd);
+	BME280_getSensorData(fd, NULL, NULL, NULL);
+
+	/* discard first forced measure, accept next ones */
+	BME280_setupFullMode(fd);
 	if (BME280_getSensorData(fd, &t, &p, &h))
 		return -3;
 
