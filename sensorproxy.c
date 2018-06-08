@@ -90,7 +90,7 @@
 /* *  Constants  * */
 /* *************** */
 
-#define BANNER			"SensorProxy v0.98.4 (radio+i2c) server"
+#define BANNER			"SensorProxy v0.98.5 (radio+i2c) server"
 #define MAX_USERNAME		32
 #define MAX_NGROUPS		(NGROUPS_MAX >> 10)	/* reasonable maximum */
 #define RADIO_PORT		5433	/* default radio433daemon TCP port */
@@ -133,6 +133,12 @@
 #define SB_NULL			0
 #define SB_RADIO		1
 #define SB_I2C			2
+
+/* I2C sensor type (address is not unique, see BMP180 and BME280) */
+#define ST_I2C_NULL		0
+#define ST_I2C_HTU21D		1
+#define ST_I2C_BMP180		2
+#define ST_I2C_BH1750		3
 
 /* ********************** */
 /* *  Global variables  * */
@@ -525,7 +531,7 @@ int formatMessage(char *buf, size_t len)
 			bufptr += sprintf(bufptr, "%s/timestamp=%lu.%03u\n",
 					  dbuf, s->tsec, s->tmsec);
 			bufptr += sprintf(bufptr, "%s/interval=%d\n", dbuf, s->interval);
-			if (c->id == HTU21D_I2C_ADDR) {
+			if (s->type == ST_I2C_HTU21D) {
 				dht2 = (struct datahtu21d *)(s->data);
 				bufptr += sprintf(bufptr, "%s/humid/min=%.1lf\n", dbuf, dht2->humid.min);
 				bufptr += sprintf(bufptr, "%s/humid/cur=%.1lf\n", dbuf, dht2->humid.cur);
@@ -535,7 +541,7 @@ int formatMessage(char *buf, size_t len)
 				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dht2->temp.cur);
 				bufptr += sprintf(bufptr, "%s/temp/max=%+.1lf\n", dbuf, dht2->temp.max);
 				bufptr += sprintf(bufptr, "%s/temp/unit=%s\n", dbuf, dht2->temp.unit);
-			} else if (c->id == BMP180_I2C_ADDR) {
+			} else if (s->type == ST_I2C_BMP180) {
 				dbm1 = (struct databmp180 *)(s->data);
 				bufptr += sprintf(bufptr, "%s/press/min=%.1lf\n", dbuf, dbm1->press.min);
 				bufptr += sprintf(bufptr, "%s/press/cur=%.1lf\n", dbuf, dbm1->press.cur);
@@ -545,7 +551,7 @@ int formatMessage(char *buf, size_t len)
 				bufptr += sprintf(bufptr, "%s/temp/cur=%+.1lf\n", dbuf, dbm1->temp.cur);
 				bufptr += sprintf(bufptr, "%s/temp/max=%+.1lf\n", dbuf, dbm1->temp.max);
 				bufptr += sprintf(bufptr, "%s/temp/unit=%s\n", dbuf, dbm1->temp.unit);
-			} else if (c->id == BH1750_I2C_ADDR) {
+			} else if (s->type == ST_I2C_BH1750) {
 				dbh1 = (struct databh1750 *)(s->data);
 				bufptr += sprintf(bufptr, "%s/light/min=%.1lf\n", dbuf, dbh1->light.min);
 				bufptr += sprintf(bufptr, "%s/light/cur=%.1lf\n", dbuf, dbh1->light.cur);
@@ -640,7 +646,6 @@ void sensorResetMinMax(void)
 {
         int i;
         struct sensorentry *s;
-	struct i2centry *c;
         struct datahyuws77th *dhs;
 	struct datahtu21d *dht2;
 	struct databmp180 *dbm1;
@@ -656,20 +661,19 @@ void sensorResetMinMax(void)
 			dhs->humid.min = dhs->humid.cur;
 			dhs->humid.max = dhs->humid.cur;
 		} else if (s->bus == SB_I2C) {
-			c = (struct i2centry *)(s->data);
-			if (c->id == HTU21D_I2C_ADDR) {
+			if (s->type == ST_I2C_HTU21D) {
 				dht2 = (struct datahtu21d *)(s->data);
 				dht2->humid.min = dht2->humid.cur;
 				dht2->humid.max = dht2->humid.cur;
 				dht2->temp.min = dht2->temp.cur;
 				dht2->temp.max = dht2->temp.cur;
-			} else if (c->id == BMP180_I2C_ADDR) {
+			} else if (s->type == ST_I2C_BMP180) {
 				dbm1 = (struct databmp180 *)(s->data);
 				dbm1->press.min = dbm1->press.cur;
 				dbm1->press.max = dbm1->press.cur;
 				dbm1->temp.min = dbm1->temp.cur;
 				dbm1->temp.max = dbm1->temp.cur;
-			} else if (c->id == BH1750_I2C_ADDR) {
+			} else if (s->type == ST_I2C_BH1750) {
 				dbh1 = (struct databh1750 *)(s->data);
 				dbh1->light.min = dbh1->light.cur;
 				dbh1->light.max = dbh1->light.cur;
@@ -846,7 +850,7 @@ void *i2cSensorThread(void *arg)
 			s = &senstbl[i];
 			if (s->bus == SB_I2C) {
 				c = (struct i2centry *)(s->data);
-				if (c->id == HTU21D_I2C_ADDR) {
+				if (s->type == ST_I2C_HTU21D) {
 					gettimeofday(&ts, NULL);
 					v0 = HTU21D_getHumidity(c->fd);
 					v1 = HTU21D_getTemperature(c->fd);
@@ -866,7 +870,7 @@ void *i2cSensorThread(void *arg)
 						logprintf(logfd, LOG_DEBUG,
 							  "sensor \"%s\" [%d] read complete (h=%.1lf, t=%.1lf)\n",
 							  s->label, i, v0, v1);
-				} else if (c->id == BMP180_I2C_ADDR) {
+				} else if (s->type == ST_I2C_BMP180) {
 					gettimeofday(&ts, NULL);
 					v0 = BMP180_getPressureFP(c->fd, BMP180_OSS_MODE_UHR, &v1);
 					if (v0 < 300.0 || v0 > 1100.0 ||
@@ -885,7 +889,7 @@ void *i2cSensorThread(void *arg)
 						logprintf(logfd, LOG_DEBUG,
 							  "sensor \"%s\" [%d] read complete (p=%.1lf, t=%.1lf)\n",
 							  s->label, i, v0, v1);
-				} else if (c->id == BH1750_I2C_ADDR) {
+				} else if (s->type == ST_I2C_BH1750) {
 					gettimeofday(&ts, NULL);
 					v0 = BH1750_getLx(c->fd);
 					if (v0 < 0.0)
@@ -941,7 +945,7 @@ int initHTU21D(int idx)
 	s->tmsec = ts.tv_usec / 1000;
 	s->interval = i2cdelay * 1000;
 	s->bus = SB_I2C;
-	s->type = HTU21D_I2C_ADDR;
+	s->type = ST_I2C_HTU21D;
 	strncpy(s->label, SL_HTU21D, SENSOR_LABEL);
 	s->data = malloc(sizeof(struct datahtu21d));
 	dht2 = (struct datahtu21d *)(s->data);
@@ -991,7 +995,7 @@ int initBMP180(int idx)
 	s->tmsec = ts.tv_usec / 1000;
 	s->interval = i2cdelay * 1000;
 	s->bus = SB_I2C;
-	s->type = BMP180_I2C_ADDR;
+	s->type = ST_I2C_BMP180;
 	strncpy(s->label, SL_BMP180, SENSOR_LABEL);
 	s->data = malloc(sizeof(struct databmp180));
 	dbm1 = (struct databmp180 *)(s->data);
@@ -1036,7 +1040,7 @@ int initBH1750(int idx)
 	s->tmsec = ts.tv_usec / 1000;
 	s->interval = i2cdelay * 1000;
 	s->bus = SB_I2C;
-	s->type = BH1750_I2C_ADDR;
+	s->type = ST_I2C_BH1750;
 	strncpy(s->label, SL_BH1750, SENSOR_LABEL);
 	s->data = malloc(sizeof(struct databh1750));
 	dbh1 = (struct databh1750 *)(s->data);
