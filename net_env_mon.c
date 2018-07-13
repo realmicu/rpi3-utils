@@ -701,7 +701,7 @@ int main(int argc, char *argv[])
 			memset(&bmp180_dptr, 0, sizeof(struct bmp180_dataptr));
 			memset(&bh1750_dptr, 0, sizeof(struct bh1750_dataptr));
 			memset(&bme280_dptr, 0, sizeof(struct bme280_dataptr));
-			msglen = recv(clfd, buf, RCVBUF_SIZE, 0);
+			msglen = recv(clfd, buf, RCVBUF_SIZE, MSG_WAITALL);
 			if (msglen > 0) {
 				bufptrn = buf;
 				do {
